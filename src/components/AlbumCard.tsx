@@ -23,7 +23,7 @@ export function AlbumCard({ album, index, onSelect }: AlbumCardProps) {
       <div className="relative aspect-video bg-slate-900 overflow-hidden">
         {album.thumbnail && !imgError ? (
           <img
-            src={album.thumbnail}
+            src={`/api/proxy?url=${encodeURIComponent(album.thumbnail)}`}
             alt={album.name}
             onError={() => setImgError(true)}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
