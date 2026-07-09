@@ -1,0 +1,80 @@
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { ExternalLink, Download, ImageIcon } from 'lucide-react';
+import type { BalbumsAlbum } from '@/lib/balbums-client';
+
+interface AlbumCardProps {
+  album: BalbumsAlbum;
+  index: number;
+  onSelect: (url: string) => void;
+}
+
+export function AlbumCard({ album, index, onSelect }: AlbumCardProps) {
+  const [imgError, setImgError] = useState(false);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, delay: index * 0.03 }}
+      className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden hover:border-cyan-500/50 transition-all duration-200 group"
+    >
+      {/* Thumbnail */}
+      <div className="relative aspect-video bg-slate-900 overflow-hidden">
+        {album.thumbnail && !imgError ? (
+          <img
+            src={album.thumbnail}
+            alt={album.name}
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-slate-800">
+            <ImageIcon className="w-8 h-8 text-slate-600" />
+          </div>
+        )}
+        
+        {/* File count badge */}
+        <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded-full">
+          <span className="text-xs font-medium text-white">{album.fileCount} files</span>
+        </div>
+
+        {/* Overlay on hover */}
+        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+          <button
+            onClick={() => onSelect(album.url)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Extrair
+          </button>
+          <a
+            href={album.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Abrir
+          </a>
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="p-3">
+        <h3 
+          className="text-xs sm:text-sm text-slate-200 font-medium truncate cursor-pointer hover:text-cyan-400 transition-colors"
+          onClick={() => onSelect(album.url)}
+          title={album.name}
+        >
+          {album.name}
+        </h3>
+        <p className="text-[10px] text-slate-500 mt-1 truncate font-mono">
+          {album.url}
+        </p>
+      </div>
+    </motion.div>
+  );
+}
