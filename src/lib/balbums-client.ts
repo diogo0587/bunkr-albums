@@ -178,12 +178,19 @@ export function buildSearchUrl(
     live: '/live',
   };
 
-  const path = categoryPaths[category] || '';
+  // For 'popular' sort, force the top-level category paths that return sorted results
+  let effectiveCategory = category;
+  let effectiveSort = sort;
+  if (sort === 'popular' && category === 'all') {
+    effectiveCategory = 'albums';
+  }
+
+  const path = categoryPaths[effectiveCategory] || '';
   const params = new URLSearchParams();
   if (query.trim()) params.set('search', query.trim());
   params.set('mode', mode);
   params.set('per', String(perPage));
-  params.set('sort', sort);
+  if (effectiveSort !== 'latest') params.set('sort', effectiveSort);
   if (page > 1) params.set('page', String(page));
 
   const queryString = params.toString();

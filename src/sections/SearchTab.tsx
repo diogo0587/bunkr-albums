@@ -37,6 +37,16 @@ export function SearchTab() {
   const touchStartY = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Track seen album IDs for deduplication
+  const seenIdsRef = useRef(new Set<string>());
+
+  // Reset seen IDs when search resets
+  useEffect(() => {
+    if (albums.length === 0) {
+      seenIdsRef.current.clear();
+    }
+  }, [albums.length]);
+
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -55,12 +65,35 @@ export function SearchTab() {
         category,
         proxyUrl: proxy,
       });
+
+      // Deduplicate: filter out albums we've already seen
       if (append) {
-        setAlbums(prev => [...prev, ...res.albums]);
+        const newAlbums = res.albums.filter(a => !seenIdsRef.current.has(a.id));
+        newAlbums.forEach(a => seenIdsRef.current.add(a.id));
+        if (newAlbums.length === 0) {
+          // No new results — we've exhausted pagination
+          setTotalPages(pageNum - 1);
+          setPage(pageNum - 1);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+        setAlbums(prev => [...prev, ...newAlbums]);
       } else {
+        seenIdsRef.current.clear();
+        res.albums.forEach(a => seenIdsRef.current.add(a.id));
         setAlbums(res.albums);
       }
-      setTotalPages(res.totalPages);
+
+      // Use the actual result count to cap totalPages
+      if (res.albums.length === 0) {
+        setTotalPages(pageNum - 1);
+      } else if (res.albums.length < 15) {
+        // If fewer results than a full page, this is the last page
+        setTotalPages(pageNum);
+      } else {
+        setTotalPages(res.totalPages);
+      }
       setPage(pageNum);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro na busca';
@@ -71,6 +104,8 @@ export function SearchTab() {
       setRefreshing(false);
     }
   }, [query, searchMode, sort, category, proxy]);
+
+
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {

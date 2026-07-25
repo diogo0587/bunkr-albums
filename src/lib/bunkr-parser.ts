@@ -3,6 +3,49 @@ import { shouldUseProxy } from './capacitor-native';
 import type { BunkrFile } from '@/types';
 import { isBunkrUrl, isCdnUrl, isDirectFileUrl } from './bunkr-hosts';
 
+/**
+ * Domains known to be dead/parked. Map them to the working bunkr.cr.
+ */
+const DEAD_BUNKR_DOMAINS: Record<string, string> = {
+  'bunkr.st': 'bunkr.cr',
+  'bunkr.ru': 'bunkr.cr',
+  'bunkr.ch': 'bunkr.cr',
+  'bunkr.cm': 'bunkr.cr',
+};
+
+/**
+ * Detect if a page is a parked/dead domain (domain-for-sale, etc).
+ */
+function isParkedPage(html: string): boolean {
+  const lower = html.toLowerCase();
+  return (
+    lower.includes('domain for sale') ||
+    lower.includes('is for sale') ||
+    lower.includes('buy this domain') ||
+    lower.includes('depressively.com') ||
+    lower.includes('sedoparking') ||
+    lower.includes('parkingcrew') ||
+    lower.includes('dan.com') ||
+    (lower.includes('bunkr') === false && lower.includes('album') === false && lower.includes('video') === false && html.length < 2000)
+  );
+}
+
+/**
+ * Rewrite dead bunkr domain to working one.
+ */
+export function rewriteBunkrDomain(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const mapped = DEAD_BUNKR_DOMAINS[parsed.hostname];
+    if (mapped) {
+      parsed.hostname = mapped;
+      return parsed.toString();
+    }
+  } catch {}
+  return url;
+}
+
+
 const BUNKR_API = 'https://glb-apisign.cdn.cr/sign';
 const DOWNLOAD_API = 'https://dl.bunkr.cr/api/_001_v2';
 const DOWNLOAD_REFERER = 'https://get.bunkrr.su/';
@@ -72,7 +115,7 @@ export function validateBunkrUrl(url: string): { valid: boolean; error?: string;
   return { valid: false, error: 'Domínio não reconhecido como Bunkr' };
 }
 
-const FETCH_TIMEOUT_MS = 5000;
+const FETCH_TIMEOUT_MS = 3000;
 
 function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -132,9 +175,20 @@ export async function fetchWithProxy(
 }
 
 export async function fetchAlbumHtml(url: string, proxyUrl?: string): Promise<string> {
-  const response = await fetchWithProxy(url, proxyUrl);
+  // Rewrite dead bunkr domains (bunkr.st -> bunkr.cr, etc.)
+  const rewrittenUrl = rewriteBunkrDomain(url);
+  const response = await fetchWithProxy(rewrittenUrl, proxyUrl);
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  return response.text();
+  const html = await response.text();
+  // If the domain returned a parked page, try the canonical bunkr.cr
+  if (isParkedPage(html) && rewrittenUrl === url) {
+    const crUrl = rewriteBunkrDomain(url);
+    if (crUrl !== url) {
+      const fallback = await fetchWithProxy(crUrl, proxyUrl);
+      if (fallback.ok) return fallback.text();
+    }
+  }
+  return html;
 }
 
 export function extractItemPages(html: string, baseUrl: string): string[] {
@@ -317,7 +371,7 @@ export async function resolveAlbumFiles(
 export async function resolveFilesConcurrently(
   files: BunkrFile[],
   proxyUrl?: string,
-  concurrency: number = 8,
+  concurrency: number = 12,
   onProgress?: (current: number, total: number, filename: string) => void
 ): Promise<BunkrFile[]> {
   const resolved = [...files];
@@ -329,7 +383,7 @@ export async function resolveFilesConcurrently(
     const batch = files.slice(i, i + concurrency);
     const batchResults = await Promise.allSettled(
       batch.map(async (file, batchIdx) => {
-        const result = await resolveFileUrl(file.url, proxyUrl);
+        const result = await resolveFileUrlCached(file.url, proxyUrl);
         return { index: i + batchIdx, result };
       })
     );
@@ -380,12 +434,27 @@ export function filterFiles(
   });
 }
 
+// Cache for resolved file URLs (in-memory during session)
+const resolvedUrlCache = new Map<string, { url: string; filename: string } | null>();
+
+async function resolveFileUrlCached(
+  filePageUrl: string,
+  proxyUrl?: string
+): Promise<{ url: string; filename: string } | null> {
+  if (resolvedUrlCache.has(filePageUrl)) return resolvedUrlCache.get(filePageUrl) ?? null;
+  const result = await resolveFileUrl(filePageUrl, proxyUrl);
+  resolvedUrlCache.set(filePageUrl, result);
+  return result;
+}
+
 export async function resolveFileUrl(
   filePageUrl: string,
   proxyUrl?: string
 ): Promise<{ url: string; filename: string } | null> {
   try {
-    const html = await fetchAlbumHtml(filePageUrl, proxyUrl);
+    // Rewrite dead bunkr domains
+    const rewrittenUrl = rewriteBunkrDomain(filePageUrl);
+    const html = await fetchAlbumHtml(rewrittenUrl, proxyUrl);
     const filename = extractFilenameFromPage(html) || 'unknown';
     const pageVars = extractPageVars(html);
     const cdnUrl = pageVars.jsCDN;
