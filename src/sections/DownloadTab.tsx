@@ -7,13 +7,28 @@ import { FileListItem } from '@/components/FileListItem';
 import { useAppStore, getEffectiveProxyUrl } from '@/hooks/useAppStore';
 import { validateBunkrUrl, fetchAlbumHtml, parseAlbumHtml, filterFiles, resolveFileUrl } from '@/lib/bunkr-parser';
 import { copyToClipboard } from '@/lib/utils';
+import type { BunkrFile } from '@/types';
+
+function getFileExtension(filename: string): string {
+  const match = filename.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function filenameFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const parts = pathname.split('/');
+    return decodeURIComponent(parts[parts.length - 1]) || 'file';
+  } catch {
+    return 'file';
+  }
+}
 
 export function DownloadTab() {
   const store = useAppStore();
   const { download: state } = store;
   const proxy = getEffectiveProxyUrl(store);
 
-  // Check for pending URL from SearchTab
   useEffect(() => {
     if (store.pendingUrl) {
       const url = store.pendingUrl;
@@ -55,6 +70,23 @@ export function DownloadTab() {
     store.dlSetLoading(true);
     store.dlSetResolving(false);
 
+    // ── Direct file URL (CDN link) ──
+    if (validation.isDirect) {
+      const name = filenameFromUrl(urlToFetch);
+      const directFile: BunkrFile = {
+        id: `direct-${Date.now()}`,
+        name,
+        url: urlToFetch,
+        size: '-',
+        type: getFileExtension(name),
+        isDirect: true,
+      };
+      store.dlSetFiles([directFile], name);
+      store.showToast({ type: 'success', message: 'Link direto detectado — pronto para download' });
+      return;
+    }
+
+    // ── Album URL — fetch and resolve ──
     try {
       const html = await fetchAlbumHtml(urlToFetch, proxy);
       const result = parseAlbumHtml(html, urlToFetch);
@@ -132,9 +164,7 @@ export function DownloadTab() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-      } catch {
-        // ignore individual failures
-      }
+      } catch { /* ignore */ }
 
       if (i < filesToDownload.length - 1) {
         await new Promise(r => setTimeout(r, store.downloadDelay || 500));
@@ -168,7 +198,7 @@ export function DownloadTab() {
             value={state.urlInput}
             onChange={(e) => store.dlSetUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
-            placeholder="Cole a URL do álbum Bunkr aqui..."
+            placeholder="URL do álbum Bunkr ou link direto do CDN..."
             className="flex-1 px-3 py-2.5 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all font-mono min-h-[44px]"
           />
           <GradientButton
@@ -221,35 +251,32 @@ export function DownloadTab() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-slate-800 border border-slate-600 rounded-xl overflow-hidden"
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b border-slate-600/50">
               <div>
                 <h3 className="text-sm sm:text-base font-medium text-slate-200">{state.albumName}</h3>
                 <p className="text-[10px] sm:text-xs text-slate-500">
-                  {filteredFiles.length} de {state.files.length} arquivos
+                  {filteredFiles.length} de {state.files.length} arquivo{state.files.length !== 1 ? 's' : ''}
                 </p>
               </div>
               <button
                 onClick={() => allSelected ? store.dlDeselectAll() : store.dlSelectAll()}
                 className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
               >
-                {allSelected ? 'Desselecionar Tudo' : 'Selecionar Tudo'}
+                {allSelected ? 'Desselecionar' : 'Selecionar Tudo'}
               </button>
             </div>
 
-            {/* Legend */}
             <div className="flex items-center gap-4 px-3 sm:px-4 py-2 border-b border-slate-600/50 bg-slate-800/50">
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-[10px] sm:text-xs text-slate-400">URL resolvida</span>
+                <span className="text-[10px] sm:text-xs text-slate-400">Download direto</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-[10px] sm:text-xs text-slate-400">Não resolvido</span>
+                <span className="text-[10px] sm:text-xs text-slate-400">Pendente</span>
               </div>
             </div>
 
-            {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-2 p-3 sm:p-4 border-b border-slate-600/50">
               <div className="flex-1">
                 <input
@@ -271,7 +298,6 @@ export function DownloadTab() {
               </div>
             </div>
 
-            {/* File List */}
             <div className="max-h-[300px] sm:max-h-[400px] overflow-y-auto scrollbar-thin">
               {filteredFiles.length > 0 ? (
                 filteredFiles.map((file, index) => (
@@ -292,7 +318,6 @@ export function DownloadTab() {
               )}
             </div>
 
-            {/* Download Area */}
             {filteredFiles.length > 0 && (
               <div className="p-3 sm:p-4 border-t border-slate-600 space-y-3">
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -312,7 +337,6 @@ export function DownloadTab() {
                     Copiar URLs
                   </button>
                 </div>
-
                 {state.downloading && (
                   <ProgressBar current={state.downloadProgress.current} total={state.downloadProgress.total} />
                 )}
@@ -322,23 +346,17 @@ export function DownloadTab() {
         )}
       </AnimatePresence>
 
-      {/* Empty State */}
       {state.files.length === 0 && !state.loading && !state.resolving && (
         <div className="flex flex-col items-center py-12 sm:py-16 text-slate-600">
           <FolderOpen className="w-12 h-12 sm:w-16 sm:h-16 mb-4" />
           <p className="text-sm sm:text-base text-slate-500 text-center px-4">
-            Cole uma URL de álbum Bunkr acima e clique em Listar
+            Cole uma URL de álbum Bunkr ou link direto do CDN
           </p>
           <p className="text-xs text-slate-600 mt-2 text-center max-w-md">
-            Ou use a aba <strong>Buscar</strong> para encontrar álbuns no balbums.st
+            Aceita: URLs de álbum (<code>bunkr.cr/a/...</code>), páginas de arquivo, ou links diretos do CDN
           </p>
         </div>
       )}
     </div>
   );
-}
-
-function getFileExtension(filename: string): string {
-  const match = filename.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
-  return match ? match[1].toLowerCase() : '';
 }
