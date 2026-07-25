@@ -157,7 +157,7 @@ export function DownloadTab() {
 
       try {
         const a = document.createElement('a');
-        a.href = file.url;
+        a.href = `/api/proxy?url=${encodeURIComponent(file.url)}`;
         a.download = file.name || `file-${i}`;
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
