@@ -220,7 +220,7 @@ async function getDownloadUrl(fileId: string, proxyUrl?: string): Promise<any> {
 async function getSignedUrl(mediaPath: string, proxyUrl?: string): Promise<{ token: string; ex: string } | null> {
   try {
     const response = await fetchWithProxy(
-      `${BUNKR_API}?mediaPath=${encodeURIComponent(mediaPath)}`,
+      `${BUNKR_API}?path=${encodeURIComponent(mediaPath)}`,
       proxyUrl
     );
     if (!response.ok) return null;
