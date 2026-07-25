@@ -17,15 +17,18 @@ export interface ResolvedFile extends BunkrFile {
 }
 
 export const DEFAULT_CORS_PROXIES = [
-  'https://corsproxy.io/?',
+  'https://corsproxy.io/?url=',
   'https://api.allorigins.win/raw?url=',
+  'https://api.codetabs.com/v1/proxy?quest=',
+  'https://proxy.cors.sh/',
 ];
 
 export function getCorsProxyUrl(targetUrl: string, proxyUrl?: string): string {
   if (!proxyUrl) return targetUrl;
   const proxy = proxyUrl.replace(/\/$/, '');
   if (proxy.includes('allorigins')) return `${proxy}${encodeURIComponent(targetUrl)}`;
-  if (proxy.includes('?')) return `${proxy}${encodeURIComponent(targetUrl)}`;
+  if (proxy.includes('url=')) return `${proxy}${encodeURIComponent(targetUrl)}`;
+  if (proxy.includes('?')) return `${proxy}url=${encodeURIComponent(targetUrl)}`;
   return `${proxy}/${targetUrl}`;
 }
 
@@ -75,13 +78,37 @@ export async function fetchWithProxy(
   options?: RequestInit
 ): Promise<Response> {
   const effectiveProxy = shouldUseProxy(proxyUrl);
-  const fetchUrl = getCorsProxyUrl(url, effectiveProxy);
   const headers: Record<string, string> = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
     ...((options?.headers as Record<string, string>) || {}),
   };
-  return fetch(fetchUrl, { ...options, headers });
+
+  // Try the configured proxy first
+  if (effectiveProxy) {
+    try {
+      const fetchUrl = getCorsProxyUrl(url, effectiveProxy);
+      const resp = await fetch(fetchUrl, { ...options, headers });
+      if (resp.ok) return resp;
+    } catch { /* fall through to fallbacks */ }
+  }
+
+  // Auto-failover: try each DEFAULT_CORS_PROXIES until one works
+  for (const fallbackProxy of DEFAULT_CORS_PROXIES) {
+    if (fallbackProxy === effectiveProxy) continue; // skip the one we already tried
+    try {
+      const fetchUrl = getCorsProxyUrl(url, fallbackProxy);
+      const resp = await fetch(fetchUrl, { ...options, headers });
+      if (resp.ok) return resp;
+    } catch { /* try next */ }
+  }
+
+  // Last resort: try direct (no proxy)
+  try {
+    return await fetch(url, { ...options, headers });
+  } catch {
+    throw new Error('Todos os proxies falharam. Verifique sua conexão.');
+  }
 }
 
 export async function fetchAlbumHtml(url: string, proxyUrl?: string): Promise<string> {

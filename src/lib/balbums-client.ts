@@ -22,6 +22,7 @@ export type SortMode = 'latest' | 'popular' | 'updated';
 export type CategoryMode = 'all' | 'albums' | 'videos' | 'files' | 'images' | 'live';
 
 import { shouldUseProxy } from './capacitor-native';
+import { fetchWithProxy } from './bunkr-parser';
 
 const BASE_URL = 'https://balbums.st';
 
@@ -204,21 +205,7 @@ export async function searchBalbums(
   const searchUrl = buildSearchUrl(query, searchOptions);
   const proxyUrl = shouldUseProxy(rawProxy);
 
-  let fetchUrl: string;
-  if (proxyUrl) {
-    const proxy = proxyUrl.replace(/\/$/, '');
-    if (proxy.includes('allorigins')) {
-      fetchUrl = `${proxy}${encodeURIComponent(searchUrl)}`;
-    } else if (proxy.includes('?')) {
-      fetchUrl = `${proxy}${encodeURIComponent(searchUrl)}`;
-    } else {
-      fetchUrl = `${proxy}/${searchUrl}`;
-    }
-  } else {
-    fetchUrl = searchUrl;
-  }
-
-  const response = await fetch(fetchUrl, {
+  const response = await fetchWithProxy(searchUrl, proxyUrl, {
     headers: { 'Accept': 'text/html,*/*' },
   });
 
