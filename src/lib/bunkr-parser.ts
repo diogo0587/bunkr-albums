@@ -72,6 +72,14 @@ export function validateBunkrUrl(url: string): { valid: boolean; error?: string;
   return { valid: false, error: 'Domínio não reconhecido como Bunkr' };
 }
 
+const FETCH_TIMEOUT_MS = 5000;
+
+function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 export async function fetchWithProxy(
   url: string,
   proxyUrl?: string,
@@ -84,28 +92,40 @@ export async function fetchWithProxy(
     ...((options?.headers as Record<string, string>) || {}),
   };
 
-  // Try the configured proxy first
-  if (effectiveProxy) {
+  // On native platform: try direct first (no CORS needed), then proxy as fallback
+  if (!effectiveProxy) {
     try {
-      const fetchUrl = getCorsProxyUrl(url, effectiveProxy);
-      const resp = await fetch(fetchUrl, { ...options, headers });
-      if (resp.ok) return resp;
-    } catch { /* fall through to fallbacks */ }
+      return await fetchWithTimeout(url, { ...options, headers });
+    } catch { /* direct failed, try proxies as fallback */ }
+    for (const proxy of DEFAULT_CORS_PROXIES) {
+      try {
+        const fetchUrl = getCorsProxyUrl(url, proxy);
+        return await fetchWithTimeout(fetchUrl, { ...options, headers });
+      } catch { /* try next */ }
+    }
+    throw new Error('Falha ao buscar conteúdo. Verifique sua conexão.');
   }
 
-  // Auto-failover: try each DEFAULT_CORS_PROXIES until one works
+  // On web: try configured proxy first
+  try {
+    const fetchUrl = getCorsProxyUrl(url, effectiveProxy);
+    const resp = await fetchWithTimeout(fetchUrl, { ...options, headers });
+    if (resp.ok) return resp;
+  } catch { /* fall through to fallbacks */ }
+
+  // Fallback: try each DEFAULT_CORS_PROXIES
   for (const fallbackProxy of DEFAULT_CORS_PROXIES) {
-    if (fallbackProxy === effectiveProxy) continue; // skip the one we already tried
+    if (fallbackProxy === effectiveProxy) continue;
     try {
       const fetchUrl = getCorsProxyUrl(url, fallbackProxy);
-      const resp = await fetch(fetchUrl, { ...options, headers });
+      const resp = await fetchWithTimeout(fetchUrl, { ...options, headers });
       if (resp.ok) return resp;
     } catch { /* try next */ }
   }
 
-  // Last resort: try direct (no proxy)
+  // Last resort: try direct
   try {
-    return await fetch(url, { ...options, headers });
+    return await fetchWithTimeout(url, { ...options, headers });
   } catch {
     throw new Error('Todos os proxies falharam. Verifique sua conexão.');
   }
@@ -297,7 +317,7 @@ export async function resolveAlbumFiles(
 export async function resolveFilesConcurrently(
   files: BunkrFile[],
   proxyUrl?: string,
-  concurrency: number = 5,
+  concurrency: number = 8,
   onProgress?: (current: number, total: number, filename: string) => void
 ): Promise<BunkrFile[]> {
   const resolved = [...files];
