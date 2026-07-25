@@ -1,9 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Search, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Image, Video, FileArchive, FolderOpen, Radio, Grid3X3 } from 'lucide-react';
+import { Search, Loader2, AlertTriangle, Image, Video, FileArchive, FolderOpen, Radio, Grid3X3, RotateCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GradientButton } from '@/components/GradientButton';
 import { AlbumCard } from '@/components/AlbumCard';
-import { searchBalbums, type CategoryMode, type SearchMode, type SortMode, type BalbumsResult } from '@/lib/balbums-client';
+import { searchBalbums, type CategoryMode, type SearchMode, type SortMode, type BalbumsResult, type BalbumsAlbum } from '@/lib/balbums-client';
 import { useAppStore, getEffectiveProxyUrl } from '@/hooks/useAppStore';
 
 const categories: { value: CategoryMode; label: string; icon: React.ReactNode }[] = [
@@ -18,7 +18,7 @@ const categories: { value: CategoryMode; label: string; icon: React.ReactNode }[
 export function SearchTab() {
   const store = useAppStore();
   const proxy = getEffectiveProxyUrl(store);
-  
+
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryMode>('all');
   const [searchMode, setSearchMode] = useState<SearchMode>('broad');
@@ -26,15 +26,22 @@ export function SearchTab() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<BalbumsResult | null>(null);
+  const [albums, setAlbums] = useState<BalbumsAlbum[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
   const [hasSearched, setHasSearched] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const handleSearch = useCallback(async (pageNum = 1) => {
+  // Search function
+  const doSearch = useCallback(async (pageNum: number, append = false) => {
     setLoading(true);
     setError('');
     setHasSearched(true);
@@ -47,38 +54,116 @@ export function SearchTab() {
         category,
         proxyUrl: proxy,
       });
-      setResult(res);
+      if (append) {
+        setAlbums(prev => [...prev, ...res.albums]);
+      } else {
+        setAlbums(res.albums);
+      }
+      setTotalPages(res.totalPages);
       setPage(pageNum);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro na busca';
       setError(msg);
-      setResult(null);
+      if (!append) setAlbums([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [query, searchMode, sort, category, proxy]);
 
-  const handlePageChange = (newPage: number) => {
-    if (newPage < 1 || (result && newPage > result.totalPages)) return;
-    handleSearch(newPage);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  // Infinite scroll via IntersectionObserver
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading && page < totalPages) {
+          doSearch(page + 1, true);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [loading, page, totalPages, doSearch]);
+
+  // Pull-to-refresh (mobile)
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (containerRef.current && containerRef.current.scrollTop === 0) {
+      touchStartY.current = e.touches[0].clientY;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (touchStartY.current === 0) return;
+    const diff = e.touches[0].clientY - touchStartY.current;
+    if (diff > 0 && diff < 150) {
+      setPullDistance(diff);
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (pullDistance > 80 && !loading) {
+      setRefreshing(true);
+      setPullDistance(0);
+      setAlbums([]);
+      setPage(1);
+      doSearch(1, false);
+    } else {
+      setPullDistance(0);
+    }
+    touchStartY.current = 0;
+  }, [pullDistance, loading, doSearch]);
 
   const handleSelectAlbum = useCallback((url: string) => {
     store.setPendingUrl(url);
     store.setActiveTab('download');
   }, [store]);
 
-  // Popular search on load (empty query = recent)
+  // Initial load
   useEffect(() => {
-    handleSearch(1);
+    doSearch(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleRefresh = () => {
+    setRefreshing(true);
+    setAlbums([]);
+    setPage(1);
+    doSearch(1, false);
+  };
+
   return (
-    <div className="space-y-4">
+    <div
+      ref={containerRef}
+      className="space-y-4"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Pull to refresh indicator */}
+      <AnimatePresence>
+        {(pullDistance > 0 || refreshing) && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: refreshing ? 48 : pullDistance * 0.6, opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="flex items-center justify-center overflow-hidden"
+          >
+            <RotateCw
+              className={`w-5 h-5 text-cyan-400 ${refreshing ? 'animate-spin' : ''}`}
+              style={{ transform: `rotate(${pullDistance * 3}deg)` }}
+            />
+            <span className="text-xs text-slate-400 ml-2">
+              {refreshing ? 'Atualizando...' : pullDistance > 80 ? 'Solte para atualizar' : 'Puxe para baixo'}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Search Header */}
-      <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 space-y-4">
+      <div className="bg-slate-800 border border-slate-600 rounded-xl p-3 sm:p-6 space-y-3 sm:space-y-4">
         {/* Search input */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <div className="relative flex-1">
@@ -88,14 +173,14 @@ export function SearchTab() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch(1)}
+              onKeyDown={(e) => e.key === 'Enter' && doSearch(1)}
               placeholder="Buscar álbuns Bunkr..."
               className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all min-h-[44px]"
             />
           </div>
           <GradientButton
-            onClick={() => handleSearch(1)}
-            loading={loading}
+            onClick={() => doSearch(1)}
+            loading={loading && albums.length === 0}
             className="w-full sm:w-auto whitespace-nowrap"
           >
             Buscar
@@ -109,7 +194,7 @@ export function SearchTab() {
             {categories.map((cat) => (
               <button
                 key={cat.value}
-                onClick={() => { setCategory(cat.value); setPage(1); handleSearch(1); }}
+                onClick={() => { setCategory(cat.value); setAlbums([]); setPage(1); }}
                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors min-h-[36px] ${
                   category === cat.value
                     ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
@@ -122,20 +207,12 @@ export function SearchTab() {
             ))}
           </div>
 
-          {/* Mode & Sort */}
-          <div className="flex gap-2 ml-auto">
-            <select
-              value={searchMode}
-              onChange={(e) => { setSearchMode(e.target.value as SearchMode); }}
-              className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-xs text-slate-300 outline-none focus:border-cyan-500 min-h-[36px]"
-            >
-              <option value="broad">Ampla</option>
-              <option value="exact">Exata</option>
-            </select>
+          {/* Sort */}
+          <div className="flex gap-2 sm:ml-auto">
             <select
               value={sort}
-              onChange={(e) => { setSort(e.target.value as SortMode); }}
-              className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-xs text-slate-300 outline-none focus:border-cyan-500 min-h-[36px]"
+              onChange={(e) => { setSort(e.target.value as SortMode); setAlbums([]); setPage(1); }}
+              className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300 outline-none min-h-[36px]"
             >
               <option value="latest">Recentes</option>
               <option value="popular">Populares</option>
@@ -154,7 +231,7 @@ export function SearchTab() {
 
       {/* Results */}
       <AnimatePresence mode="wait">
-        {loading && !result ? (
+        {loading && albums.length === 0 ? (
           <motion.div
             key="loading"
             initial={{ opacity: 0 }}
@@ -165,7 +242,7 @@ export function SearchTab() {
             <Loader2 className="w-10 h-10 animate-spin mb-3" />
             <p className="text-sm">Carregando álbuns...</p>
           </motion.div>
-        ) : result && result.albums.length > 0 ? (
+        ) : albums.length > 0 ? (
           <motion.div
             key="results"
             initial={{ opacity: 0 }}
@@ -177,13 +254,22 @@ export function SearchTab() {
             <div className="flex items-center justify-between px-1">
               <p className="text-sm text-slate-400">
                 {query ? `Resultados para "${query}"` : 'Álbuns recentes'}
-                <span className="text-slate-600 ml-1">— Página {page} de {result.totalPages}</span>
+                {totalPages > 1 && (
+                  <span className="text-slate-600 ml-1">— Página {page} de {totalPages}</span>
+                )}
               </p>
+              <button
+                onClick={handleRefresh}
+                className="text-slate-500 hover:text-slate-300 transition-colors p-1"
+                title="Atualizar"
+              >
+                <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
 
             {/* Album Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-              {result.albums.map((album, index) => (
+              {albums.map((album, index) => (
                 <AlbumCard
                   key={album.id}
                   album={album}
@@ -193,56 +279,22 @@ export function SearchTab() {
               ))}
             </div>
 
-            {/* Pagination */}
-            {result.totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-4">
-                <button
-                  onClick={() => handlePageChange(page - 1)}
-                  disabled={page <= 1}
-                  className="flex items-center gap-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Anterior
-                </button>
-                
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, result.totalPages) }, (_, i) => {
-                    let pageNum: number;
-                    if (result.totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (page <= 3) {
-                      pageNum = i + 1;
-                    } else if (page >= result.totalPages - 2) {
-                      pageNum = result.totalPages - 4 + i;
-                    } else {
-                      pageNum = page - 2 + i;
-                    }
-                    
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => handlePageChange(pageNum)}
-                        className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
-                          pageNum === page
-                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                            : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                </div>
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-4" />
 
-                <button
-                  onClick={() => handlePageChange(page + 1)}
-                  disabled={page >= result.totalPages}
-                  className="flex items-center gap-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Próxima
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+            {/* Loading more */}
+            {loading && albums.length > 0 && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+                <span className="text-xs text-slate-400 ml-2">Carregando mais...</span>
               </div>
+            )}
+
+            {/* End of results */}
+            {!loading && page >= totalPages && albums.length > 0 && (
+              <p className="text-center text-xs text-slate-600 py-4">
+                Fim dos resultados
+              </p>
             )}
           </motion.div>
         ) : hasSearched ? (

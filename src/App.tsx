@@ -1,16 +1,18 @@
-import { useCallback } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Download, Layers, Clock, Globe, Settings } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Toast } from '@/components/Toast';
-import { SearchTab } from '@/sections/SearchTab';
-import { DownloadTab } from '@/sections/DownloadTab';
-import { BatchTab } from '@/sections/BatchTab';
-import { HistoryTab } from '@/sections/HistoryTab';
-import { HostsTab } from '@/sections/HostsTab';
-import { ConfigTab } from '@/sections/ConfigTab';
 import { useAppStore } from '@/hooks/useAppStore';
 import type { TabValue } from '@/types';
+
+// Lazy-loaded tabs
+const SearchTab = lazy(() => import('@/sections/SearchTab').then(m => ({ default: m.SearchTab })));
+const DownloadTab = lazy(() => import('@/sections/DownloadTab').then(m => ({ default: m.DownloadTab })));
+const BatchTab = lazy(() => import('@/sections/BatchTab').then(m => ({ default: m.BatchTab })));
+const HistoryTab = lazy(() => import('@/sections/HistoryTab').then(m => ({ default: m.HistoryTab })));
+const HostsTab = lazy(() => import('@/sections/HostsTab').then(m => ({ default: m.HostsTab })));
+const ConfigTab = lazy(() => import('@/sections/ConfigTab').then(m => ({ default: m.ConfigTab })));
 
 const tabs: { value: TabValue; label: string; icon: React.ReactNode }[] = [
   { value: 'search', label: 'Buscar', icon: <Search className="w-5 h-5" /> },
@@ -21,8 +23,49 @@ const tabs: { value: TabValue; label: string; icon: React.ReactNode }[] = [
   { value: 'config', label: 'Config', icon: <Settings className="w-5 h-5" /> },
 ];
 
+function TabLoader() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+function useTheme() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('bunkr-theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.classList.toggle('light', theme === 'light');
+    localStorage.setItem('bunkr-theme', theme);
+  }, [theme]);
+
+  // Listen for system theme changes
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const handler = (e: MediaQueryListEvent) => {
+      const saved = localStorage.getItem('bunkr-theme');
+      if (!saved) {
+        setTheme(e.matches ? 'light' : 'dark');
+      }
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  return { theme, setTheme };
+}
+
 export default function App() {
   const { activeTab, setActiveTab, toast, hideToast } = useAppStore();
+  const { theme, setTheme } = useTheme();
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab as TabValue);
@@ -49,9 +92,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-50 flex flex-col">
-      <Header />
+      <Header theme={theme} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
 
-      {/* Desktop top tabs (hidden on mobile) */}
+      {/* Desktop top tabs */}
       <nav className="hidden sm:block bg-slate-800 border-b border-slate-600 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex overflow-x-auto scrollbar-none">
@@ -87,12 +130,14 @@ export default function App() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
           >
-            {renderTabContent()}
+            <Suspense fallback={<TabLoader />}>
+              {renderTabContent()}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </main>
 
-      {/* Mobile bottom tab bar (hidden on desktop) */}
+      {/* Mobile bottom tab bar */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-20 bg-slate-800 border-t border-slate-700 safe-area-pb">
         <div className="flex justify-around items-center px-1 py-1">
           {tabs.map((tab) => (

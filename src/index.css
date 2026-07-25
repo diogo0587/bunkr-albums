@@ -75,6 +75,11 @@
   }
 }
 
+/* Light theme overrides for Tailwind utility classes */
+.light {
+  --tw-bg-opacity: 1;
+}
+
 /* Custom Scrollbar */
 .scrollbar-thin::-webkit-scrollbar {
   width: 8px;
@@ -91,6 +96,18 @@
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.light .scrollbar-thin::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+
+.light .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+}
+
+.light .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
 
@@ -133,12 +150,12 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
   border: 2px solid #0f172a;
 }
+
 /* Safe area for mobile bottom tab bar */
 .safe-area-pb {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Ensure body respects safe area */
 body {
   padding-top: env(safe-area-inset-top, 0px);
 }

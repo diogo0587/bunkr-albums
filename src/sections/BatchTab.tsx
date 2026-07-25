@@ -1,244 +1,194 @@
-import { useMemo, useState } from 'react';
-import { Layers, AlertTriangle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useMemo } from 'react';
+import { Layers, Loader2, Check, X, ExternalLink } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { GradientButton } from '@/components/GradientButton';
 import { ProgressBar } from '@/components/ProgressBar';
-import { BatchResultItem } from '@/components/BatchResultItem';
-import { useBatchState } from '@/hooks/useBatchState';
 import { useAppStore, getEffectiveProxyUrl } from '@/hooks/useAppStore';
-import { validateBunkrUrl, fetchAlbumHtml, parseAlbumHtml, resolveAlbumFiles } from '@/lib/bunkr-parser';
-import type { BunkrFile } from '@/types';
-
-interface BatchFileResult {
-  url: string;
-  files: BunkrFile[];
-  albumName: string;
-}
+import { validateBunkrUrl, fetchAlbumHtml, parseAlbumHtml, resolveFileUrl } from '@/lib/bunkr-parser';
+import type { BatchResult } from '@/types';
 
 export function BatchTab() {
-  const {
-    state,
-    setUrls,
-    setProcessing,
-    setResults,
-    updateResult,
-    setProgress,
-    reset,
-  } = useBatchState();
-
   const store = useAppStore();
+  const { batch: state } = store;
   const proxy = getEffectiveProxyUrl(store);
 
-  const [batchFiles, setBatchFiles] = useState<BatchFileResult[]>([]);
-
-  const urlList = useMemo(() => {
+  const urls = useMemo(() => {
     return state.urls
       .split('\n')
       .map(u => u.trim())
       .filter(Boolean);
   }, [state.urls]);
 
-  const handleProcess = async () => {
-    if (urlList.length === 0) {
-      store.showToast({ type: 'info', message: 'Insira pelo menos uma URL' });
+  const handleProcess = useCallback(async () => {
+    if (urls.length === 0) {
+      store.showToast({ type: 'error', message: 'Insira pelo menos uma URL' });
       return;
     }
 
-    const invalidUrls = urlList.filter(url => !validateBunkrUrl(url).valid);
-    if (invalidUrls.length > 0) {
-      store.showToast({ type: 'error', message: `${invalidUrls.length} URL(s) inválida(s) encontradas` });
-      return;
-    }
-
-    setProcessing(true);
-    setBatchFiles([]);
-    const initialResults: import('@/types').BatchResult[] = urlList.map(url => ({
+    const results: BatchResult[] = urls.map(url => ({
       url,
-      status: 'pending',
+      status: 'pending' as const,
       fileCount: 0,
     }));
-    setResults(initialResults);
-    setProgress(0, urlList.length);
+    store.btSetResults(results);
+    store.btSetProcessing(true);
+    store.btSetProgress(0, urls.length);
 
-    for (let i = 0; i < urlList.length; i++) {
-      const url = urlList[i];
-      updateResult(i, { url, status: 'loading', fileCount: 0 });
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      store.btSetProgress(i + 1, urls.length);
+      store.btUpdateResult(i, { url, status: 'loading', fileCount: 0 });
+
+      const validation = validateBunkrUrl(url);
+      if (!validation.valid) {
+        store.btUpdateResult(i, { url, status: 'error', fileCount: 0, error: validation.error });
+        continue;
+      }
 
       try {
-        await new Promise(r => setTimeout(r, store.downloadDelay));
-        
-        // Resolve album files (parse + resolve each file URL)
-        const resolvedFiles = await resolveAlbumFiles(url, proxy);
+        const html = await fetchAlbumHtml(url, proxy);
+        const result = parseAlbumHtml(html, url);
 
-        const albumHtml = await fetchAlbumHtml(url, proxy);
-        const parsed = parseAlbumHtml(albumHtml, url);
-
-        if (resolvedFiles.length === 0) {
-          updateResult(i, {
-            url,
-            status: 'error',
-            fileCount: 0,
-            error: 'Nenhum arquivo encontrado',
-          });
+        if (result.files.length === 0) {
+          store.btUpdateResult(i, { url, status: 'error', fileCount: 0, error: 'Nenhum arquivo encontrado' });
         } else {
-          updateResult(i, {
+          // Resolve first file to get download URL
+          const firstResolved = await resolveFileUrl(result.files[0].url, proxy);
+          store.btUpdateResult(i, {
             url,
             status: 'success',
-            fileCount: resolvedFiles.length,
+            fileCount: result.files.length,
           });
-          setBatchFiles(prev => [...prev, { url, files: resolvedFiles, albumName: parsed.albumName }]);
-          store.addHistory({
-            url,
-            timestamp: Date.now(),
-            fileCount: resolvedFiles.length,
-          });
+          store.saveDownload(url, result.files, result.albumName);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Erro desconhecido';
-        updateResult(i, {
-          url,
-          status: 'error',
-          fileCount: 0,
-          error: message,
-        });
+        store.btUpdateResult(i, { url, status: 'error', fileCount: 0, error: message });
       }
 
-      setProgress(i + 1, urlList.length);
+      if (i < urls.length - 1) {
+        await new Promise(r => setTimeout(r, store.downloadDelay || 1000));
+      }
     }
 
-    setProcessing(false);
-    const successCount = state.results.filter(r => r.status === 'success').length;
-    store.showToast({ type: 'success', message: `Processamento concluído: ${successCount}/${urlList.length} com sucesso` });
-  };
+    store.btSetProcessing(false);
+    const successCount = results.filter(r => r.status === 'success').length;
+    store.showToast({
+      type: 'success',
+      message: `${successCount}/${urls.length} álbuns processados`,
+    });
+  }, [urls, proxy, store]);
 
-  const successCount = state.results.filter(r => r.status === 'success').length;
-  const errorCount = state.results.filter(r => r.status === 'error').length;
+  const successCount = useMemo(() => state.results.filter(r => r.status === 'success').length, [state.results]);
+  const errorCount = useMemo(() => state.results.filter(r => r.status === 'error').length, [state.results]);
 
   return (
     <div className="space-y-4">
-      <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 space-y-4">
-        <label className="block text-xs font-medium uppercase tracking-wider text-slate-400">
-          URLs de Álbuns (uma por linha)
-        </label>
-        
-        <textarea
-          value={state.urls}
-          onChange={(e) => setUrls(e.target.value)}
-          placeholder={`https://bunkr.sk/a/xxxxx\nhttps://bunkr.sk/a/yyyyy\nhttps://bunkr.sk/a/zzzzz`}
-          className="w-full min-h-[150px] sm:min-h-[200px] max-h-[300px] sm:max-h-[400px] px-3 sm:px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-xs sm:text-sm font-mono text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all resize-y"
-        />
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-          <GradientButton
-            onClick={handleProcess}
-            loading={state.processing}
-            disabled={state.urls.trim().length === 0 || urlList.length === 0}
-            className="flex-1"
-          >
-            Processar Lote ({urlList.length} URLs)
-          </GradientButton>
-          
-          {state.results.length > 0 && !state.processing && (
-            <button
-              onClick={() => { reset(); setBatchFiles([]); }}
-              className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium rounded-lg transition-colors min-h-[44px]"
-            >
-              Limpar
-            </button>
-          )}
+      {/* URL Input */}
+      <div className="bg-slate-800 border border-slate-600 rounded-xl p-3 sm:p-4 space-y-3">
+        <div>
+          <label className="text-xs text-slate-400 mb-1 block">
+            URLs de álbuns Bunkr (uma por linha)
+          </label>
+          <textarea
+            value={state.urls}
+            onChange={(e) => store.btSetUrls(e.target.value)}
+            placeholder={'https://bunkr.cr/a/abc123\nhttps://bunkr.cr/a/def456\nhttps://bunkr.cr/a/ghi789'}
+            rows={5}
+            className="w-full px-3 py-2.5 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all font-mono resize-none min-h-[44px]"
+          />
+          <p className="text-[10px] text-slate-500 mt-1">
+            {urls.length} URL{urls.length !== 1 ? 's' : ''} detectada{urls.length !== 1 ? 's' : ''}
+          </p>
         </div>
 
-        {urlList.length > 10 && (
-          <p className="flex items-center gap-1.5 text-xs text-amber-400">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Muitas URLs podem demorar. Delay de {store.downloadDelay}ms + resolução de cada arquivo.
-          </p>
-        )}
-
-        {proxy && (
-          <p className="text-[11px] text-slate-500">
-            Proxy ativo: {proxy.substring(0, 40)}...
-          </p>
-        )}
+        <GradientButton
+          onClick={handleProcess}
+          loading={state.processing}
+          disabled={urls.length === 0}
+          className="w-full"
+        >
+          Processar Lote ({urls.length})
+        </GradientButton>
       </div>
 
       {/* Progress */}
-      <AnimatePresence>
-        {(state.processing || (state.results.length > 0 && !state.processing)) && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 space-y-4"
-          >
-            {state.processing && (
-              <div>
-                <p className="text-sm text-slate-300 mb-2">
-                  Processando {state.progress.current} de {state.progress.total} URLs...
-                </p>
-                <ProgressBar
-                  current={state.progress.current}
-                  total={state.progress.total}
-                />
-              </div>
-            )}
+      {state.processing && (
+        <div className="bg-slate-800 border border-slate-600 rounded-xl p-3 sm:p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+            <span className="text-xs sm:text-sm text-slate-300">
+              Processando {state.progress.current}/{state.progress.total}
+            </span>
+          </div>
+          <ProgressBar current={state.progress.current} total={state.progress.total} />
+        </div>
+      )}
 
-            {!state.processing && state.results.length > 0 && (
-              <div className="flex items-center gap-3 text-sm">
-                <span className="text-green-400">{successCount} sucesso</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-red-400">{errorCount} erro(s)</span>
-              </div>
-            )}
+      {/* Summary */}
+      {state.results.length > 0 && !state.processing && (
+        <div className="flex gap-3">
+          <div className="flex-1 bg-green-500/10 border border-green-500/30 rounded-xl p-3 text-center">
+            <p className="text-lg font-bold text-green-400">{successCount}</p>
+            <p className="text-[10px] text-green-400/70">Sucesso</p>
+          </div>
+          <div className="flex-1 bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-center">
+            <p className="text-lg font-bold text-red-400">{errorCount}</p>
+            <p className="text-[10px] text-red-400/70">Erros</p>
+          </div>
+        </div>
+      )}
 
-            <div className="space-y-2 max-h-[300px] sm:max-h-[400px] overflow-y-auto scrollbar-thin">
-              {state.results.map((result, index) => (
-                <BatchResultItem key={`${result.url}-${index}`} result={result} />
-              ))}
-            </div>
-
-            {/* Show resolved files for each album */}
-            {batchFiles.length > 0 && !state.processing && (
-              <div className="border-t border-slate-700 pt-4 space-y-4">
-                <h3 className="text-sm font-semibold text-slate-300">Arquivos Resolvidos</h3>
-                {batchFiles.map((bf, idx) => (
-                  <div key={idx} className="bg-slate-900/50 rounded-lg p-3">
-                    <p className="text-xs font-mono text-cyan-400 truncate mb-2">{bf.url}</p>
-                    <div className="space-y-1 max-h-[150px] overflow-y-auto">
-                      {bf.files.filter(f => f.isDirect).map((file, fidx) => (
-                        <div key={fidx} className="flex items-center justify-between text-xs">
-                          <span className="text-slate-300 truncate flex-1">{file.name}</span>
-                          <button
-                            onClick={() => {
-                              const a = document.createElement('a');
-                              a.href = file.url;
-                              a.download = file.name;
-                              a.target = '_blank';
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                            }}
-                            className="ml-2 px-2 py-1 bg-cyan-600/20 text-cyan-400 rounded hover:bg-cyan-600/30 transition-colors"
-                          >
-                            Download
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Results */}
+      {state.results.length > 0 && (
+        <div className="bg-slate-800 border border-slate-600 rounded-xl overflow-hidden">
+          <div className="divide-y divide-slate-700/50 max-h-[400px] overflow-y-auto scrollbar-thin">
+            {state.results.map((result, index) => (
+              <motion.div
+                key={result.url}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: index * 0.05 }}
+                className="flex items-center gap-3 px-3 sm:px-4 py-3"
+              >
+                <div className="flex-shrink-0">
+                  {result.status === 'loading' && <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />}
+                  {result.status === 'success' && <Check className="w-4 h-4 text-green-400" />}
+                  {result.status === 'error' && <X className="w-4 h-4 text-red-400" />}
+                  {result.status === 'pending' && <div className="w-4 h-4 rounded-full border border-slate-600" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-slate-300 truncate font-mono">{result.url}</p>
+                  {result.error && <p className="text-[10px] text-red-400 truncate">{result.error}</p>}
+                  {result.status === 'success' && (
+                    <p className="text-[10px] text-green-400">{result.fileCount} arquivos</p>
+                  )}
+                </div>
+                {result.status === 'success' && (
+                  <a
+                    href={result.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-shrink-0 text-slate-500 hover:text-slate-300 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Empty State */}
-      {state.results.length === 0 && !state.processing && (
+      {state.results.length === 0 && (
         <div className="flex flex-col items-center py-12 sm:py-16 text-slate-600">
           <Layers className="w-12 h-12 sm:w-16 sm:h-16 mb-4" />
           <p className="text-sm sm:text-base text-slate-500 text-center px-4">
-            Insira múltiplas URLs de álbuns para processar em lote
+            Cole múltiplas URLs de álbuns Bunkr acima
+          </p>
+          <p className="text-xs text-slate-600 mt-2 text-center max-w-md">
+            Processe vários álbuns de uma vez — cada um será listado e resolvido automaticamente
           </p>
         </div>
       )}
