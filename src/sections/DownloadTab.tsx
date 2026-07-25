@@ -6,7 +6,7 @@ import { GradientButton } from '@/components/GradientButton';
 import { ProgressBar } from '@/components/ProgressBar';
 import { FileListItem } from '@/components/FileListItem';
 import { useAppStore, getEffectiveProxyUrl } from '@/hooks/useAppStore';
-import { validateBunkrUrl, fetchAlbumHtml, parseAlbumHtml, filterFiles, resolveFileUrl } from '@/lib/bunkr-parser';
+import { validateBunkrUrl, fetchAlbumHtml, parseAlbumHtml, filterFiles, resolveFilesConcurrently } from '@/lib/bunkr-parser';
 import { copyToClipboard } from '@/lib/utils';
 import type { BunkrFile } from '@/types';
 
@@ -141,28 +141,16 @@ export function DownloadTab() {
       store.dlSetResolving(true);
       store.dlSetResolveProgress(0, result.files.length, '');
 
-      const resolvedFiles = [...result.files];
-
-      for (let i = 0; i < result.files.length; i++) {
-        const file = result.files[i];
-        store.dlSetResolveProgress(i + 1, result.files.length, file.name);
-
-        const resolved = await resolveFileUrl(file.url, proxy);
-        if (resolved) {
-          resolvedFiles[i] = {
-            ...file,
-            name: resolved.filename,
-            url: resolved.url,
-            type: getFileExtension(resolved.filename),
-            isDirect: true,
-          };
-          store.dlSetFiles(resolvedFiles.slice(0, i + 1).concat(result.files.slice(i + 1)), result.albumName);
+      const resolvedFiles = await resolveFilesConcurrently(
+        result.files,
+        proxy,
+        5,
+        (current, total, filename) => {
+          store.dlSetResolveProgress(current, total, filename);
         }
+      );
 
-        if (i < result.files.length - 1) {
-          await new Promise(r => setTimeout(r, store.downloadDelay || 600));
-        }
-      }
+      store.dlSetFiles(resolvedFiles, result.albumName);
 
       const resolvedCount = resolvedFiles.filter(f => f.isDirect).length;
       store.saveDownload(urlToFetch, resolvedFiles, result.albumName);

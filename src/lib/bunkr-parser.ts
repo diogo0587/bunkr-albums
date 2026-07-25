@@ -290,6 +290,49 @@ export async function resolveAlbumFiles(
   return resolved;
 }
 
+/**
+ * Resolve file URLs concurrently with a concurrency limit.
+ * Much faster than sequential resolution for large albums.
+ */
+export async function resolveFilesConcurrently(
+  files: BunkrFile[],
+  proxyUrl?: string,
+  concurrency: number = 5,
+  onProgress?: (current: number, total: number, filename: string) => void
+): Promise<BunkrFile[]> {
+  const resolved = [...files];
+  let completed = 0;
+  const total = files.length;
+
+  // Process in batches of `concurrency`
+  for (let i = 0; i < total; i += concurrency) {
+    const batch = files.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (file, batchIdx) => {
+        const result = await resolveFileUrl(file.url, proxyUrl);
+        return { index: i + batchIdx, result };
+      })
+    );
+
+    for (const outcome of batchResults) {
+      completed++;
+      if (outcome.status === 'fulfilled' && outcome.value.result) {
+        const { index, result } = outcome.value;
+        resolved[index] = {
+          ...files[index],
+          name: result.filename,
+          url: result.url,
+          type: getFileExtension(result.filename),
+          isDirect: true,
+        };
+      }
+      onProgress?.(completed, total, resolved[completed - 1]?.name || '');
+    }
+  }
+
+  return resolved;
+}
+
 function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim().substring(0, 200) || 'unknown_file';
 }
