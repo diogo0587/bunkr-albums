@@ -31,17 +31,15 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Install Capacitor
-        run: npm install @capacitor/core @capacitor/cli @capacitor/android
+      - name: Setup Capacitor
+        run: |
+          npx cap init "BunkrDownloader" "com.bunkr.downloader" --web-dir dist || true
+          npx cap add android || true
+          npx cap sync android
 
-      - name: Init Capacitor
-        run: npx cap init "BunkrDownloader" "com.bunkr.downloader" --web-dir dist
-
-      - name: Add Android platform
-        run: npx cap add android
-
-      - name: Sync Capacitor
-        run: npx cap sync android
+      - name: Add INTERNET permission
+        run: |
+          sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET" \/><application/' android/app/src/main/AndroidManifest.xml
 
       - name: Build Debug APK
         working-directory: android
