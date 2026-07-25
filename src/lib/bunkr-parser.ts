@@ -1,3 +1,5 @@
+import { shouldUseProxy } from './capacitor-native';
+
 import type { BunkrFile } from '@/types';
 import { isBunkrUrl, isCdnUrl, isDirectFileUrl } from './bunkr-hosts';
 
@@ -72,7 +74,8 @@ export async function fetchWithProxy(
   proxyUrl?: string,
   options?: RequestInit
 ): Promise<Response> {
-  const fetchUrl = getCorsProxyUrl(url, proxyUrl);
+  const effectiveProxy = shouldUseProxy(proxyUrl);
+  const fetchUrl = getCorsProxyUrl(url, effectiveProxy);
   const headers: Record<string, string> = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',

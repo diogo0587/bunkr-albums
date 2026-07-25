@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ExternalLink, Download, ImageIcon } from 'lucide-react';
+import { isNativePlatform } from '@/lib/capacitor-native';
 import type { BalbumsAlbum } from '@/lib/balbums-client';
 
 interface AlbumCardProps {
@@ -35,14 +36,18 @@ export function AlbumCard({ album, index, onSelect }: AlbumCardProps) {
   const bgColor = stringToHslColor(album.name);
   const accentColor = stringToAccentColor(album.name);
 
-  // Check if image is already cached
+  const isNative = isNativePlatform();
+  const thumbnailUrl = album.thumbnail
+    ? (isNative ? album.thumbnail : `/api/proxy?url=${encodeURIComponent(album.thumbnail)}`)
+    : '';
+
   useEffect(() => {
     if (!album.thumbnail || imgError) return;
     const img = new Image();
-    img.src = `/api/proxy?url=${encodeURIComponent(album.thumbnail)}`;
+    img.src = thumbnailUrl;
     img.onload = () => setImgLoaded(true);
     img.onerror = () => setImgError(true);
-  }, [album.thumbnail, imgError]);
+  }, [thumbnailUrl, imgError]);
 
   return (
     <motion.div
@@ -70,7 +75,7 @@ export function AlbumCard({ album, index, onSelect }: AlbumCardProps) {
         {album.thumbnail && !imgError ? (
           <img
             ref={imgRef}
-            src={`/api/proxy?url=${encodeURIComponent(album.thumbnail)}`}
+            src={thumbnailUrl}
             alt={album.name}
             onLoad={() => setImgLoaded(true)}
             onError={() => setImgError(true)}

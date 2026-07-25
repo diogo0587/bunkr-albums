@@ -21,6 +21,8 @@ export type SearchMode = 'broad' | 'exact';
 export type SortMode = 'latest' | 'popular' | 'updated';
 export type CategoryMode = 'all' | 'albums' | 'videos' | 'files' | 'images' | 'live';
 
+import { shouldUseProxy } from './capacitor-native';
+
 const BASE_URL = 'https://balbums.st';
 
 const FALLBACK_IMG_PATTERNS = [
@@ -198,8 +200,9 @@ export async function searchBalbums(
     proxyUrl?: string;
   } = {}
 ): Promise<BalbumsResult> {
-  const { proxyUrl, ...searchOptions } = options;
+  const { proxyUrl: rawProxy, ...searchOptions } = options;
   const searchUrl = buildSearchUrl(query, searchOptions);
+  const proxyUrl = shouldUseProxy(rawProxy);
 
   let fetchUrl: string;
   if (proxyUrl) {

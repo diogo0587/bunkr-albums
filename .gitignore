@@ -25,5 +25,6 @@ dist-ssr
 
 # Android build
 android/
-capacitor.config.*
+capacitor.config.local.*
 local.properties
+app-debug.apk

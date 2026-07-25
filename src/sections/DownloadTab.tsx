@@ -1,3 +1,4 @@
+import { triggerDownload } from '@/lib/capacitor-native';
 import { useMemo, useCallback, useEffect, useState } from 'react';
 import { FolderOpen, Search, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -195,14 +196,7 @@ export function DownloadTab() {
       store.dlSetDownloadProgress(i + 1, filesToDownload.length);
 
       try {
-        const a = document.createElement('a');
-        a.href = file.url;
-        a.download = file.name || `file-${i}`;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        triggerDownload(file.url, file.name || `file-${i}`);
       } catch { /* ignore */ }
 
       if (i < filesToDownload.length - 1) {
@@ -225,14 +219,7 @@ export function DownloadTab() {
       const file = directFiles[i];
       store.dlSetDownloadProgress(i + 1, directFiles.length);
       try {
-        const a = document.createElement('a');
-        a.href = file.url;
-        a.download = file.name || `file-${i}`;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        triggerDownload(file.url, file.name || `file-${i}`);
       } catch { /* ignore */ }
       if (i < directFiles.length - 1) {
         await new Promise(r => setTimeout(r, store.downloadDelay || 500));
