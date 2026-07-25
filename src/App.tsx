@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Download, Layers, Clock, Globe, Settings } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 import { Header } from '@/components/Header';
 import { Toast } from '@/components/Toast';
 import { useAppStore } from '@/hooks/useAppStore';
@@ -187,6 +188,9 @@ export default function App() {
 
       {/* Toast */}
       <Toast toast={toast} onClose={hideToast} />
+
+      {/* Vercel Analytics */}
+      <Analytics />
     </div>
   );
 }
