@@ -13,12 +13,12 @@ import { useAppStore } from '@/hooks/useAppStore';
 import type { TabValue } from '@/types';
 
 const tabs: { value: TabValue; label: string; icon: React.ReactNode }[] = [
-  { value: 'search', label: 'Buscar', icon: <Search className="w-4 h-4" /> },
-  { value: 'download', label: 'Download', icon: <Download className="w-4 h-4" /> },
-  { value: 'batch', label: 'Lote', icon: <Layers className="w-4 h-4" /> },
-  { value: 'history', label: 'Histórico', icon: <Clock className="w-4 h-4" /> },
-  { value: 'hosts', label: 'Hosts', icon: <Globe className="w-4 h-4" /> },
-  { value: 'config', label: 'Config', icon: <Settings className="w-4 h-4" /> },
+  { value: 'search', label: 'Buscar', icon: <Search className="w-5 h-5" /> },
+  { value: 'download', label: 'Download', icon: <Download className="w-5 h-5" /> },
+  { value: 'batch', label: 'Lote', icon: <Layers className="w-5 h-5" /> },
+  { value: 'history', label: 'Histórico', icon: <Clock className="w-5 h-5" /> },
+  { value: 'hosts', label: 'Hosts', icon: <Globe className="w-5 h-5" /> },
+  { value: 'config', label: 'Config', icon: <Settings className="w-5 h-5" /> },
 ];
 
 export default function App() {
@@ -51,8 +51,8 @@ export default function App() {
     <div className="min-h-screen bg-slate-900 text-slate-50 flex flex-col">
       <Header />
 
-      {/* Tabs */}
-      <nav className="bg-slate-800 border-b border-slate-600 sticky top-0 z-10">
+      {/* Desktop top tabs (hidden on mobile) */}
+      <nav className="hidden sm:block bg-slate-800 border-b border-slate-600 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex overflow-x-auto scrollbar-none">
             {tabs.map((tab) => (
@@ -60,7 +60,7 @@ export default function App() {
                 key={tab.value}
                 onClick={() => handleTabChange(tab.value)}
                 className={`
-                  relative flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-3 text-xs sm:text-sm font-medium whitespace-nowrap
+                  relative flex items-center gap-2 px-5 py-3 text-sm font-medium whitespace-nowrap
                   transition-colors duration-200 border-b-2 min-h-[48px]
                   ${
                     activeTab === tab.value
@@ -70,7 +70,7 @@ export default function App() {
                 `}
               >
                 {tab.icon}
-                <span className="hidden sm:inline">{tab.label}</span>
+                <span>{tab.label}</span>
               </button>
             ))}
           </div>
@@ -78,7 +78,7 @@ export default function App() {
       </nav>
 
       {/* Content */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-4 sm:py-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-3 sm:py-6 pb-20 sm:pb-6">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -92,9 +92,33 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800 py-3 px-4 sm:px-6 text-center">
-        <p className="text-[11px] sm:text-xs text-slate-600">
+      {/* Mobile bottom tab bar (hidden on desktop) */}
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-20 bg-slate-800 border-t border-slate-700 safe-area-pb">
+        <div className="flex justify-around items-center px-1 py-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => handleTabChange(tab.value)}
+              className={`
+                flex flex-col items-center justify-center gap-0.5 w-14 py-1.5 rounded-lg
+                transition-colors duration-150 min-h-[52px]
+                ${
+                  activeTab === tab.value
+                    ? 'text-cyan-400'
+                    : 'text-slate-500 active:text-slate-300'
+                }
+              `}
+            >
+              {tab.icon}
+              <span className="text-[10px] font-medium leading-tight">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* Footer (desktop only) */}
+      <footer className="hidden sm:block border-t border-slate-800 py-3 px-6 text-center">
+        <p className="text-xs text-slate-600">
           BunkrDownloader Pro v2.1 — com integracao balbums.st
         </p>
       </footer>
