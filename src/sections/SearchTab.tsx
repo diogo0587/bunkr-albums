@@ -3,6 +3,7 @@ import { Search, Loader2, AlertTriangle, Image, Video, FileArchive, FolderOpen, 
 import { motion, AnimatePresence } from 'framer-motion';
 import { GradientButton } from '@/components/GradientButton';
 import { AlbumCard } from '@/components/AlbumCard';
+import { SkeletonGrid } from '@/components/SkeletonCard';
 import { searchBalbums, type CategoryMode, type SearchMode, type SortMode, type BalbumsResult, type BalbumsAlbum } from '@/lib/balbums-client';
 import { useAppStore, getEffectiveProxyUrl } from '@/hooks/useAppStore';
 
@@ -121,11 +122,18 @@ export function SearchTab() {
     store.setActiveTab('download');
   }, [store]);
 
-  // Initial load
+  // Trigger search when filters change (skip initial mount)
+  const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      doSearch(1);
+      return;
+    }
+    setAlbums([]);
+    setPage(1);
     doSearch(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sort, category, searchMode]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -237,10 +245,8 @@ export function SearchTab() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex flex-col items-center py-16 text-slate-500"
           >
-            <Loader2 className="w-10 h-10 animate-spin mb-3" />
-            <p className="text-sm">Carregando álbuns...</p>
+            <SkeletonGrid count={8} />
           </motion.div>
         ) : albums.length > 0 ? (
           <motion.div

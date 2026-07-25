@@ -17,6 +17,7 @@ export function Header({ theme, onToggleTheme }: HeaderProps) {
         </h1>
       </div>
       <div className="flex items-center gap-2">
+        <span className="hidden sm:inline text-[10px] text-slate-500 font-mono mr-1">1-6</span>
         <button
           onClick={onToggleTheme}
           className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"

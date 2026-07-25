@@ -67,6 +67,23 @@ export default function App() {
   const { activeTab, setActiveTab, toast, hideToast } = useAppStore();
   const { theme, setTheme } = useTheme();
 
+  // Keyboard shortcuts for tab navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const tabMap: Record<string, TabValue> = {
+        '1': 'search', '2': 'download', '3': 'batch',
+        '4': 'history', '5': 'hosts', '6': 'config',
+      };
+      if (tabMap[e.key]) {
+        e.preventDefault();
+        setActiveTab(tabMap[e.key]);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [setActiveTab]);
+
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab as TabValue);
   }, [setActiveTab]);

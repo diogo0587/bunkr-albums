@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect } from 'react';
+import { useMemo, useCallback, useEffect, useState } from 'react';
 import { FolderOpen, Search, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { GradientButton } from '@/components/GradientButton';
@@ -28,6 +28,7 @@ export function DownloadTab() {
   const store = useAppStore();
   const { download: state } = store;
   const proxy = getEffectiveProxyUrl(store);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (store.pendingUrl) {
@@ -38,6 +39,44 @@ export function DownloadTab() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const text = e.dataTransfer.getData('text/plain');
+    if (text && text.trim()) {
+      const urls = text.trim().split('\n').map(u => u.trim()).filter(Boolean);
+      if (urls.length === 1) {
+        store.dlSetUrl(urls[0]);
+        handleFetch(urls[0]);
+      } else {
+        store.dlSetUrl(urls.join('\n'));
+        store.showToast({ type: 'info', message: `${urls.length} URLs coladas — cole na aba Lote para processar` });
+      }
+    }
+  }, [store]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData('text/plain');
+    if (text && text.includes('')) {
+      const urls = text.trim().split('\n').map(u => u.trim()).filter(Boolean);
+      if (urls.length > 1) {
+        e.preventDefault();
+        store.dlSetUrl(urls[0]);
+        store.showToast({ type: 'info', message: 'Múltiplas URLs detectadas — use a aba Lote' });
+      }
+    }
+  }, [store]);
 
   const handleCopy = useCallback((msg: string) => {
     store.showToast({ type: 'success', message: msg });
@@ -175,6 +214,34 @@ export function DownloadTab() {
     store.showToast({ type: 'success', message: `${filesToDownload.length} downloads iniciados` });
   };
 
+  const handleDownloadAll = async () => {
+    if (directFiles.length === 0) {
+      store.showToast({ type: 'error', message: 'Nenhum arquivo direto disponível' });
+      return;
+    }
+    store.dlSetDownloading(true);
+    store.dlSetDownloadProgress(0, directFiles.length);
+    for (let i = 0; i < directFiles.length; i++) {
+      const file = directFiles[i];
+      store.dlSetDownloadProgress(i + 1, directFiles.length);
+      try {
+        const a = document.createElement('a');
+        a.href = file.url;
+        a.download = file.name || `file-${i}`;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } catch { /* ignore */ }
+      if (i < directFiles.length - 1) {
+        await new Promise(r => setTimeout(r, store.downloadDelay || 500));
+      }
+    }
+    store.dlSetDownloading(false);
+    store.showToast({ type: 'success', message: `${directFiles.length} downloads iniciados` });
+  };
+
   const handleCopyAllUrls = async () => {
     const urls = filteredFiles
       .filter(f => state.selectedFiles.includes(f.id))
@@ -190,25 +257,39 @@ export function DownloadTab() {
 
   return (
     <div className="space-y-4">
-      {/* URL Input */}
-      <div className="bg-slate-800 border border-slate-600 rounded-xl p-3 sm:p-4">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={state.urlInput}
-            onChange={(e) => store.dlSetUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
-            placeholder="URL do álbum Bunkr ou link direto do CDN..."
-            className="flex-1 px-3 py-2.5 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all font-mono min-h-[44px]"
-          />
-          <GradientButton
-            onClick={() => handleFetch()}
-            loading={state.loading}
-            className="whitespace-nowrap"
-          >
-            Listar
-          </GradientButton>
-        </div>
+      {/* URL Input with Drag & Drop */}
+      <div
+        className={`bg-slate-800 border-2 border-dashed rounded-xl p-3 sm:p-4 transition-all duration-200 ${
+          isDragging ? 'border-cyan-500 bg-cyan-500/5' : 'border-slate-600'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDragging ? (
+          <div className="text-center py-4">
+            <p className="text-sm text-cyan-400 font-medium">Solte a URL aqui</p>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={state.urlInput}
+              onChange={(e) => store.dlSetUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
+              onPaste={handlePaste}
+              placeholder="URL do álbum Bunkr, link direto, ou arraste/cole..."
+              className="flex-1 px-3 py-2.5 bg-slate-900 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all font-mono min-h-[44px]"
+            />
+            <GradientButton
+              onClick={() => handleFetch()}
+              loading={state.loading}
+              className="whitespace-nowrap"
+            >
+              Listar
+            </GradientButton>
+          </div>
+        )}
       </div>
 
       {/* Resolving Progress */}
@@ -328,6 +409,14 @@ export function DownloadTab() {
                     className="flex-1"
                   >
                     Download ({selectedDirectFiles.length})
+                  </GradientButton>
+                  <GradientButton
+                    onClick={handleDownloadAll}
+                    loading={state.downloading}
+                    disabled={directFiles.length === 0}
+                    variant="success"
+                  >
+                    Download All ({directFiles.length})
                   </GradientButton>
                   <button
                     onClick={handleCopyAllUrls}
