@@ -23,7 +23,7 @@ export function FileListItem({ file, selected, onSelect, onCopy, index }: FileLi
   };
 
   const handleOpen = () => {
-    window.open(`/api/proxy?url=${encodeURIComponent(file.url)}`, '_blank', 'noopener,noreferrer');
+    window.open(file.url, '_blank', 'noopener,noreferrer');
   };
 
   const isDirectFile = file.isDirect !== false;
