@@ -184,7 +184,8 @@ export function DownloadTab() {
       store.dlSetDownloadProgress(i + 1, filesToDownload.length);
 
       try {
-        triggerDownload(file.url, file.name || `file-${i}`);
+        const proxy = getEffectiveProxyUrl(store);
+        triggerDownload(file.url, file.name || `file-${i}`, proxy);
       } catch { /* ignore */ }
 
       if (i < filesToDownload.length - 1) {
@@ -207,7 +208,8 @@ export function DownloadTab() {
       const file = directFiles[i];
       store.dlSetDownloadProgress(i + 1, directFiles.length);
       try {
-        triggerDownload(file.url, file.name || `file-${i}`);
+        const proxy = getEffectiveProxyUrl(store);
+        triggerDownload(file.url, file.name || `file-${i}`, proxy);
       } catch { /* ignore */ }
       if (i < directFiles.length - 1) {
         await new Promise(r => setTimeout(r, store.downloadDelay || 500));
