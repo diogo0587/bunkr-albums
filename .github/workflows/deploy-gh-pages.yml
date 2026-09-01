@@ -35,8 +35,8 @@ jobs:
 
       - name: Copy static files
         run: |
-          cp public/icon.svg public/manifest.json dist-github/
-          cp public/sw.js dist-github/
+          mkdir -p dist-github
+          cp public/icon.svg public/manifest.json public/sw.js dist-github/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
