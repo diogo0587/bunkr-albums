@@ -116,7 +116,7 @@ export function validateBunkrUrl(url: string): { valid: boolean; error?: string;
   return { valid: false, error: 'Domínio não reconhecido como Bunkr' };
 }
 
-const FETCH_TIMEOUT_MS = 3000;
+const FETCH_TIMEOUT_MS = 10000;
 
 function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -359,7 +359,7 @@ export async function resolveAlbumFiles(
     } else {
       resolved.push(file);
     }
-    if (i < files.length - 1) await new Promise(r => setTimeout(r, 500));
+    if (i < files.length - 1) await new Promise(r => setTimeout(r, 0));
   }
 
   return resolved;
@@ -379,7 +379,7 @@ export async function resolveFilesConcurrently(
   let completed = 0;
   const total = files.length;
 
-  // Process in batches of `concurrency` with optimized delays
+  // Process in batches of `concurrency` - NO delays for maximum speed
   for (let i = 0; i < total; i += concurrency) {
     const batch = files.slice(i, i + concurrency);
     const batchResults = await Promise.allSettled(
@@ -402,11 +402,6 @@ export async function resolveFilesConcurrently(
         };
       }
       onProgress?.(completed, total, resolved[completed - 1]?.name || '');
-    }
-    
-    // Small delay between batches to avoid rate limiting, but not between individual files
-    if (i + concurrency < total) {
-      await new Promise(r => setTimeout(r, 100));
     }
   }
 
