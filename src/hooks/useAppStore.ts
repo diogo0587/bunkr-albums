@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { HistoryEntry, ToastData, TabValue, BunkrFile, BatchResult } from '@/types';
 
-export type ProxyProvider = 'corsproxy' | 'allorigins' | 'codetabs' | 'corsproxysh' | 'custom';
+export type ProxyProvider = 'vercel' | 'corsproxy' | 'allorigins' | 'codetabs' | 'corsproxysh' | 'custom';
 
 export const PROXY_PROVIDERS: Record<ProxyProvider, { label: string; url: string }> = {
-  corsproxy: { label: 'corsproxy.io (recomendado)', url: 'https://corsproxy.io/?url=' },
+  vercel: { label: 'Vercel Proxy (recomendado)', url: 'https://bunkr-albums.vercel.app/api/proxy?url=' },
+  corsproxy: { label: 'corsproxy.io', url: 'https://corsproxy.io/?url=' },
   allorigins: { label: 'allorigins.win', url: 'https://api.allorigins.win/raw?url=' },
   codetabs: { label: 'codetabs.com', url: 'https://api.codetabs.com/v1/proxy?quest=' },
   corsproxysh: { label: 'corsproxy.sh', url: 'https://proxy.cors.sh/' },

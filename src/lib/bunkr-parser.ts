@@ -60,6 +60,7 @@ export interface ResolvedFile extends BunkrFile {
 }
 
 export const DEFAULT_CORS_PROXIES = [
+  'https://bunkr-albums.vercel.app/api/proxy?url=',
   'https://corsproxy.io/?url=',
   'https://api.allorigins.win/raw?url=',
   'https://api.codetabs.com/v1/proxy?quest=',
