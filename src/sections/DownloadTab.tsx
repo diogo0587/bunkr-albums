@@ -144,7 +144,7 @@ export function DownloadTab() {
       const resolvedFiles = await resolveFilesConcurrently(
         result.files,
         proxy,
-        8,
+        12,
         (current, total, filename) => {
           store.dlSetResolveProgress(current, total, filename);
         }

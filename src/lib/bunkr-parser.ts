@@ -379,7 +379,7 @@ export async function resolveFilesConcurrently(
   let completed = 0;
   const total = files.length;
 
-  // Process in batches of `concurrency`
+  // Process in batches of `concurrency` with optimized delays
   for (let i = 0; i < total; i += concurrency) {
     const batch = files.slice(i, i + concurrency);
     const batchResults = await Promise.allSettled(
@@ -402,6 +402,11 @@ export async function resolveFilesConcurrently(
         };
       }
       onProgress?.(completed, total, resolved[completed - 1]?.name || '');
+    }
+    
+    // Small delay between batches to avoid rate limiting, but not between individual files
+    if (i + concurrency < total) {
+      await new Promise(r => setTimeout(r, 100));
     }
   }
 
