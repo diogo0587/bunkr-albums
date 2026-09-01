@@ -154,7 +154,7 @@ export async function fetchWithProxy(
   try {
     const fetchUrl = getCorsProxyUrl(url, effectiveProxy);
     const resp = await fetchWithTimeout(fetchUrl, { ...options, headers });
-    if (resp.ok) return resp;
+    if (resp.ok || resp.status === 403) return resp;
   } catch { /* fall through to fallbacks */ }
 
   // Fallback: try each DEFAULT_CORS_PROXIES
@@ -163,13 +163,15 @@ export async function fetchWithProxy(
     try {
       const fetchUrl = getCorsProxyUrl(url, fallbackProxy);
       const resp = await fetchWithTimeout(fetchUrl, { ...options, headers });
-      if (resp.ok) return resp;
+      if (resp.ok || resp.status === 403) return resp;
     } catch { /* try next */ }
   }
 
   // Last resort: try direct
   try {
-    return await fetchWithTimeout(url, { ...options, headers });
+    const resp = await fetchWithTimeout(url, { ...options, headers });
+    if (resp.ok || resp.status === 403) return resp;
+    throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
   } catch {
     throw new Error('Todos os proxies falharam. Verifique sua conexão.');
   }
@@ -453,6 +455,12 @@ export async function resolveFileUrl(
   proxyUrl?: string
 ): Promise<{ url: string; filename: string } | null> {
   try {
+    // If it's already a direct CDN URL with token, return it directly
+    const parsed = new URL(filePageUrl);
+    if (parsed.pathname.includes('/storage/media/') && parsed.searchParams.has('token') && parsed.searchParams.has('ex')) {
+      return { url: filePageUrl, filename: parsed.pathname.split('/').pop() || 'file' };
+    }
+
     // Rewrite dead bunkr domains
     const rewrittenUrl = rewriteBunkrDomain(filePageUrl);
     const html = await fetchAlbumHtml(rewrittenUrl, proxyUrl);
