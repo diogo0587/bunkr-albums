@@ -36,8 +36,16 @@ export function shouldUseProxy(proxyUrl: string | undefined): string | undefined
  * download manager. In web, uses proxy URL for CORS or opens in new tab.
  */
 export function triggerDownload(url: string, filename: string, proxyUrl?: string): void {
-  // Fix double slashes in URL
-  let cleanUrl = url.replace(/\/\//g, '/');
+  // Normalize only the pathname. Replacing every `//` corrupts the protocol
+  // (`https://` became `https:/`) and makes every download URL invalid.
+  let cleanUrl: string;
+  try {
+    const parsed = new URL(url);
+    parsed.pathname = parsed.pathname.replace(/\/{2,}/g, '/');
+    cleanUrl = parsed.toString();
+  } catch {
+    cleanUrl = url;
+  }
   
   if (isNativePlatform()) {
     // In Capacitor/Android, window.open triggers the system download handler
@@ -50,12 +58,13 @@ export function triggerDownload(url: string, filename: string, proxyUrl?: string
       // Use proxy to avoid CORS issues
       const proxy = proxyUrl.replace(/\/$/, '');
       let proxiedUrl: string;
+      const downloadParams = `&download=1&filename=${encodeURIComponent(filename || 'download')}`;
       if (proxy.includes('url=')) {
-        proxiedUrl = `${proxy}${encodeURIComponent(cleanUrl)}`;
+        proxiedUrl = `${proxy}${encodeURIComponent(cleanUrl)}${downloadParams}`;
       } else if (proxy.includes('?')) {
-        proxiedUrl = `${proxy}&url=${encodeURIComponent(cleanUrl)}`;
+        proxiedUrl = `${proxy}&url=${encodeURIComponent(cleanUrl)}${downloadParams}`;
       } else {
-        proxiedUrl = `${proxy}?url=${encodeURIComponent(cleanUrl)}`;
+        proxiedUrl = `${proxy}?url=${encodeURIComponent(cleanUrl)}${downloadParams}`;
       }
       window.open(proxiedUrl, '_blank', 'noopener,noreferrer');
     } else {
