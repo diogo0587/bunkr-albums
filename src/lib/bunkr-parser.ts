@@ -486,21 +486,21 @@ export async function resolveFileUrl(
       }
     }
 
-    let mediaPath: string;
-    if (cdnUrl) {
-      mediaPath = new URL(cdnUrl).pathname;
-    } else if (unsignedUrl) {
-      mediaPath = new URL(unsignedUrl).pathname;
-    } else {
-      const directUrl = findDirectMediaUrl(html);
-      if (directUrl) return { url: directUrl, filename };
-      return null;
-    }
+    // The metadata API is authoritative and may point to a different CDN
+    // node than the stale jsCDN value embedded in the HTML page.
+    let baseUrl = unsignedUrl || cdnUrl;
+    if (!baseUrl) baseUrl = findDirectMediaUrl(html) || undefined;
+    if (!baseUrl) return null;
+
+    const absoluteBaseUrl = new URL(baseUrl, rewrittenUrl);
+    const mediaPath = absoluteBaseUrl.pathname;
 
     const signed = await getSignedUrl(mediaPath, proxyUrl);
     if (signed?.token && signed?.ex) {
-      const baseUrl = cdnUrl || unsignedUrl!;
-      return { url: `${baseUrl}?token=${signed.token}&ex=${signed.ex}`, filename };
+      absoluteBaseUrl.searchParams.set('token', signed.token);
+      absoluteBaseUrl.searchParams.set('ex', signed.ex);
+      absoluteBaseUrl.searchParams.set('n', filename);
+      return { url: absoluteBaseUrl.toString(), filename };
     }
 
     // Unsigned CDN links fail with ERR_INVALID_RESPONSE/403. Do not mark the
