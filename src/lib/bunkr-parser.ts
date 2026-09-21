@@ -60,7 +60,7 @@ export interface ResolvedFile extends BunkrFile {
 }
 
 export const DEFAULT_CORS_PROXIES = [
-  'https://bunkr-albums.vercel.app/api/proxy?url=',
+  '/api/proxy?url=',
   'https://corsproxy.io/?url=',
   'https://api.allorigins.win/raw?url=',
   'https://api.codetabs.com/v1/proxy?quest=',
@@ -266,7 +266,15 @@ function extractFileId(html: string): string | null {
 
 async function getDownloadUrl(fileId: string, proxyUrl?: string): Promise<any> {
   try {
-    const response = await fetchWithProxy(`${DOWNLOAD_API}?fileId=${fileId}`, proxyUrl);
+    const response = await fetchWithProxy(DOWNLOAD_API, proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Upstream-Referer': DOWNLOAD_REFERER,
+      },
+      body: JSON.stringify({ id: fileId }),
+    });
     if (!response.ok) return null;
     return await response.json();
   } catch {
@@ -495,8 +503,8 @@ export async function resolveFileUrl(
       return { url: `${baseUrl}?token=${signed.token}&ex=${signed.ex}`, filename };
     }
 
-    if (unsignedUrl) return { url: unsignedUrl, filename };
-    if (cdnUrl) return { url: cdnUrl, filename };
+    // Unsigned CDN links fail with ERR_INVALID_RESPONSE/403. Do not mark the
+    // file as downloadable unless the signer returned a valid token.
     return null;
   } catch {
     return null;
