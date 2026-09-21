@@ -2,6 +2,7 @@ import { shouldUseProxy } from './capacitor-native';
 
 import type { BunkrFile } from '@/types';
 import { isBunkrUrl, isCdnUrl, isDirectFileUrl } from './bunkr-hosts';
+import { APP_PROXY_URL } from './app-proxy';
 
 /**
  * Domains known to be dead/parked. Map them to the working bunkr.cr.
@@ -60,7 +61,7 @@ export interface ResolvedFile extends BunkrFile {
 }
 
 export const DEFAULT_CORS_PROXIES = [
-  '/api/proxy?url=',
+  APP_PROXY_URL,
   'https://corsproxy.io/?url=',
   'https://api.allorigins.win/raw?url=',
   'https://api.codetabs.com/v1/proxy?quest=',

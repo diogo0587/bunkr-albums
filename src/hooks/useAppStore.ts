@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { HistoryEntry, ToastData, TabValue, BunkrFile, BatchResult } from '@/types';
+import { APP_PROXY_URL } from '@/lib/app-proxy';
 
 export type ProxyProvider = 'vercel' | 'corsproxy' | 'allorigins' | 'codetabs' | 'corsproxysh' | 'custom';
 
 export const PROXY_PROVIDERS: Record<ProxyProvider, { label: string; url: string }> = {
-  vercel: { label: 'Vercel Proxy (recomendado)', url: '/api/proxy?url=' },
+  vercel: { label: 'Vercel Proxy (recomendado)', url: APP_PROXY_URL },
   corsproxy: { label: 'corsproxy.io', url: 'https://corsproxy.io/?url=' },
   allorigins: { label: 'allorigins.win', url: 'https://api.allorigins.win/raw?url=' },
   codetabs: { label: 'codetabs.com', url: 'https://api.codetabs.com/v1/proxy?quest=' },
