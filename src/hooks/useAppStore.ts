@@ -215,11 +215,22 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'bunkr-downloader-storage',
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<AppState>;
-        if (version < 2) {
-          return { ...state, proxyProvider: 'vercel', proxyUrl: '' } as AppState;
+        if (version < 3) {
+          return {
+            ...state,
+            proxyProvider: 'vercel',
+            proxyUrl: '',
+            savedDownloads: {},
+            download: {
+              ...state.download,
+              files: [],
+              selectedFiles: [],
+              albumName: '',
+            },
+          } as AppState;
         }
         return persistedState as AppState;
       },
