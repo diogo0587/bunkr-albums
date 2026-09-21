@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ExternalLink, Download, ImageIcon } from 'lucide-react';
 import { useNativeImage } from '@/hooks/useNativeImage';
@@ -29,14 +29,14 @@ function stringToAccentColor(str: string): string {
 }
 
 export function AlbumCard({ album, index, onSelect }: AlbumCardProps) {
-  const imgRef = useRef<HTMLImageElement>(null);
+  const [loadedSrc, setLoadedSrc] = useState('');
   const bgColor = stringToHslColor(album.name);
   const accentColor = stringToAccentColor(album.name);
 
   const thumbnailUrl = album.thumbnail || '';
-  const { src: resolvedSrc, loading: nativeLoading, error: nativeError } = useNativeImage(thumbnailUrl);
+  const { src: resolvedSrc, loading: nativeLoading, error: nativeError, retry: retryThumbnail } = useNativeImage(thumbnailUrl);
 
-  const imgLoaded = !nativeLoading && !!resolvedSrc && !nativeError;
+  const imgLoaded = loadedSrc === resolvedSrc && !nativeLoading && !!resolvedSrc && !nativeError;
   const imgError = nativeError;
 
   return (
@@ -61,11 +61,13 @@ export function AlbumCard({ album, index, onSelect }: AlbumCardProps) {
 
         {thumbnailUrl && !imgError ? (
           <img
-            ref={imgRef}
             src={resolvedSrc || thumbnailUrl}
             alt={album.name}
             className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
             loading="lazy"
+            referrerPolicy="no-referrer"
+            onLoad={() => setLoadedSrc(resolvedSrc)}
+            onError={() => { setLoadedSrc(''); retryThumbnail(); }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">

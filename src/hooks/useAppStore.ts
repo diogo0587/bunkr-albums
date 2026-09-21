@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { HistoryEntry, ToastData, TabValue, BunkrFile, BatchResult } from '@/types';
 import { APP_PROXY_URL } from '@/lib/app-proxy';
+import type { ThemeId } from '@/lib/themes';
 
 export type ProxyProvider = 'vercel' | 'corsproxy' | 'allorigins' | 'codetabs' | 'corsproxysh' | 'custom';
 
@@ -40,6 +41,7 @@ interface BatchState {
 
 interface AppState {
   activeTab: TabValue;
+  theme: ThemeId;
   proxyEnabled: boolean;
   proxyProvider: ProxyProvider;
   proxyUrl: string;
@@ -55,6 +57,7 @@ interface AppState {
   batch: BatchState;
 
   setActiveTab: (tab: TabValue) => void;
+  setTheme: (theme: ThemeId) => void;
   setProxyEnabled: (v: boolean) => void;
   setProxyProvider: (provider: ProxyProvider) => void;
   setProxyUrl: (url: string) => void;
@@ -126,8 +129,9 @@ export function getEffectiveProxyUrl(state: { proxyEnabled: boolean; proxyProvid
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       activeTab: 'search',
+      theme: 'midnight',
       proxyEnabled: true,
       proxyProvider: 'vercel',
       proxyUrl: '',
@@ -140,6 +144,7 @@ export const useAppStore = create<AppState>()(
       batch: { ...defaultBatch },
 
       setActiveTab: (tab) => set({ activeTab: tab }),
+      setTheme: (theme) => set({ theme }),
       setProxyEnabled: (v) => set({ proxyEnabled: v }),
       setProxyProvider: (provider) => set({ proxyProvider: provider }),
       setProxyUrl: (url) => set({ proxyUrl: url }),
@@ -160,8 +165,11 @@ export const useAppStore = create<AppState>()(
         })),
       removeSavedDownload: (url) =>
         set((state) => {
-          const { [url]: _, ...rest } = state.savedDownloads;
-          return { savedDownloads: rest };
+          return {
+            savedDownloads: Object.fromEntries(
+              Object.entries(state.savedDownloads).filter(([savedUrl]) => savedUrl !== url)
+            ),
+          };
         }),
       clearSavedDownloads: () => set({ savedDownloads: {} }),
       setPendingUrl: (url) => set({ pendingUrl: url }),
@@ -216,10 +224,10 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'bunkr-downloader-storage',
-      version: 3,
+      version: 4,
       migrate: (persistedState, version) => {
         const state = persistedState as Partial<AppState>;
-        if (version < 3) {
+        if (version < 4) {
           return {
             ...state,
             proxyProvider: 'vercel',
@@ -237,6 +245,7 @@ export const useAppStore = create<AppState>()(
       },
       partialize: (state) => ({
         proxyEnabled: state.proxyEnabled,
+        theme: state.theme,
         proxyProvider: state.proxyProvider,
         proxyUrl: state.proxyUrl,
         downloadDelay: state.downloadDelay,

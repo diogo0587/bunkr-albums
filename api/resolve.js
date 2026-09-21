@@ -47,7 +47,7 @@ function resolverInfo(html) {
 async function resolveOne(pageUrl) {
   try {
     const parsedPage = new URL(pageUrl)
-    if (!parsedPage.hostname.includes('bunkr.')) throw new Error('Unsupported host')
+    if (!/(?:^|\.)bunkrr?\.[a-z0-9.-]+$/i.test(parsedPage.hostname)) throw new Error('Unsupported host')
 
     const page = await fetchWithTimeout(pageUrl, {
       headers: { 'User-Agent': USER_AGENT, 'Accept': 'text/html,*/*' },

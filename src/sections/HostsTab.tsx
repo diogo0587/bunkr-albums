@@ -2,13 +2,25 @@ import { Globe, Check } from 'lucide-react';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { HostCard } from '@/components/HostCard';
-import { BUNKR_HOSTS } from '@/lib/bunkr-hosts';
+import {
+  BUNKR_HOSTS,
+  CURRENT_BUNKR_HOSTS,
+  LEGACY_BUNKR_HOSTS,
+  COMPATIBLE_BUNKR_HOSTS,
+  BUNKR_INFRASTRUCTURE_HOSTS,
+} from '@/lib/bunkr-hosts';
 import { copyToClipboard } from '@/lib/utils';
 import { useAppStore } from '@/hooks/useAppStore';
 
 export function HostsTab() {
   const { showToast } = useAppStore();
   const [copiedAll, setCopiedAll] = useState(false);
+  const groups = [
+    { title: 'Atuais', description: 'Mirrors mantidos pelo extrator de referência', hosts: CURRENT_BUNKR_HOSTS },
+    { title: 'Legados', description: 'Aceitos e redirecionados para o domínio atual', hosts: LEGACY_BUNKR_HOSTS },
+    { title: 'Compatibilidade', description: 'Domínios históricos ainda reconhecidos', hosts: COMPATIBLE_BUNKR_HOSTS },
+    { title: 'CDN e infraestrutura', description: 'Download, assinatura e armazenamento', hosts: BUNKR_INFRASTRUCTURE_HOSTS },
+  ];
 
   const handleCopyAll = async () => {
     const allHosts = BUNKR_HOSTS.join('\n');
@@ -45,17 +57,26 @@ export function HostsTab() {
         </button>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
-        {BUNKR_HOSTS.map((hostname, index) => (
-          <motion.div
-            key={hostname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.01 }}
-          >
-            <HostCard hostname={hostname} />
-          </motion.div>
+      <div className="space-y-5">
+        {groups.map((group) => (
+          <section key={group.title}>
+            <div className="mb-2">
+              <h3 className="text-xs font-semibold text-slate-300">{group.title}</h3>
+              <p className="text-[10px] text-slate-500">{group.description}</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+              {group.hosts.map((hostname, index) => (
+                <motion.div
+                  key={hostname}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.01, 0.15) }}
+                >
+                  <HostCard hostname={hostname} />
+                </motion.div>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     </div>

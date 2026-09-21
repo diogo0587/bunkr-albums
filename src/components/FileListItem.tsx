@@ -91,9 +91,12 @@ export function FileListItem({ file, selected, onSelect, onCopy, index }: FileLi
           )}
         </div>
 
-        <span className="text-[11px] sm:text-xs font-mono text-slate-400 flex-shrink-0 min-w-[60px] sm:min-w-[80px] text-right uppercase">
-          {file.type || 'file'}
-        </span>
+        <div className="flex-shrink-0 min-w-[64px] sm:min-w-[92px] text-right font-mono leading-tight">
+          <p className="text-[11px] sm:text-xs text-slate-400 uppercase">{file.type || 'file'}</p>
+          <p className="mt-0.5 text-[10px] sm:text-[11px] text-cyan-400 normal-case" title="Tamanho do arquivo">
+            {file.size && file.size !== '-' ? file.size : '—'}
+          </p>
+        </div>
 
         {canPreview && (
           <button

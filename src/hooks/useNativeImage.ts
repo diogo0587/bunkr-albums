@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { isNativePlatform } from '@/lib/capacitor-native';
+import { APP_PROXY_URL } from '@/lib/app-proxy';
 
 /**
  * In-memory cache for blob URLs created from fetched images.
@@ -38,52 +39,48 @@ export function useNativeImage(src: string | undefined): {
   src: string;
   loading: boolean;
   error: boolean;
+  retry: () => void;
 } {
   const isNative = isNativePlatform();
-  const [blobUrl, setBlobUrl] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const mountedRef = useRef(true);
+  const candidates = useMemo(() => {
+    if (!src) return [];
+    const secureSrc = src.replace(/^http:/i, 'https:');
+    const proxied = `${APP_PROXY_URL}${encodeURIComponent(secureSrc)}&referer=${encodeURIComponent('https://balbums.st/')}`;
+    return secureSrc === proxied ? [secureSrc] : [secureSrc, proxied];
+  }, [src]);
+  const [attemptState, setAttemptState] = useState({ source: src || '', attempt: 0 });
+  const attempt = attemptState.source === (src || '') ? attemptState.attempt : 0;
+  const [blobState, setBlobState] = useState({ candidate: '', url: '' });
+  const candidate = candidates[attempt] || '';
+  const error = Boolean(src) && attempt >= candidates.length;
+
+  const retry = useCallback(() => {
+    setAttemptState((current) => {
+      const currentAttempt = current.source === (src || '') ? current.attempt : 0;
+      return { source: src || '', attempt: Math.min(currentAttempt + 1, candidates.length) };
+    });
+  }, [candidates.length, src]);
 
   useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
+    let cancelled = false;
+    if (!candidate || !isNative || blobCache.has(candidate)) return;
 
-  useEffect(() => {
-    if (!src || !isNative) {
-      setBlobUrl('');
-      setLoading(false);
-      setError(false);
-      return;
-    }
-
-    // Already cached
-    if (blobCache.has(src)) {
-      setBlobUrl(blobCache.get(src)!);
-      setLoading(false);
-      setError(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(false);
-
-    fetchImageAsBlob(src)
+    fetchImageAsBlob(candidate)
       .then((url) => {
-        if (mountedRef.current) {
-          setBlobUrl(url);
-          setLoading(false);
+        if (!cancelled) {
+          setBlobState({ candidate, url });
         }
       })
       .catch(() => {
-        if (mountedRef.current) {
-          setError(true);
-          setLoading(false);
+        if (!cancelled) {
+          retry();
         }
       });
-  }, [src, isNative]);
+    return () => { cancelled = true; };
+  }, [candidate, isNative, retry]);
 
-  if (!isNative) return { src: src || '', loading: false, error: false };
-  return { src: blobUrl, loading, error };
+  if (!isNative) return { src: error ? '' : candidate, loading: false, error, retry };
+  const cachedUrl = blobCache.get(candidate) || '';
+  const blobUrl = cachedUrl || (blobState.candidate === candidate ? blobState.url : '');
+  return { src: blobUrl, loading: Boolean(candidate && !blobUrl && !error), error, retry };
 }

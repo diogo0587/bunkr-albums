@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { GradientButton } from '@/components/GradientButton';
 import { AlbumCard } from '@/components/AlbumCard';
 import { SkeletonGrid } from '@/components/SkeletonCard';
-import { searchBalbums, type CategoryMode, type SearchMode, type SortMode, type BalbumsResult, type BalbumsAlbum } from '@/lib/balbums-client';
+import { searchBalbums, type CategoryMode, type SearchMode, type SortMode, type BalbumsAlbum } from '@/lib/balbums-client';
 import { useAppStore, getEffectiveProxyUrl } from '@/hooks/useAppStore';
 
 const categories: { value: CategoryMode; label: string; icon: React.ReactNode }[] = [
@@ -22,7 +22,7 @@ export function SearchTab() {
 
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryMode>('all');
-  const [searchMode, setSearchMode] = useState<SearchMode>('broad');
+  const [searchMode] = useState<SearchMode>('broad');
   const [sort, setSort] = useState<SortMode>('latest');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);

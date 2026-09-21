@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { Info, AlertTriangle, Lightbulb, Check, Shield, Zap, Trash2, Clock } from 'lucide-react';
+import { Info, AlertTriangle, Lightbulb, Check, Shield, Zap, Trash2, Clock, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Switch } from '@/components/ui/switch';
 import { useAppStore, PROXY_PROVIDERS } from '@/hooks/useAppStore';
 import type { ProxyProvider } from '@/hooks/useAppStore';
+import { THEME_PRESETS } from '@/lib/themes';
 
 export function ConfigTab() {
   const {
     proxyEnabled,
+    theme,
+    setTheme,
     setProxyEnabled,
     proxyProvider,
     setProxyProvider,
@@ -42,6 +45,39 @@ export function ConfigTab() {
 
   return (
     <div className="space-y-4 max-w-2xl mx-auto">
+      <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Palette className="w-5 h-5 text-cyan-400" />
+          <h2 className="text-base font-semibold text-slate-200">Aparência</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {THEME_PRESETS.map((preset) => (
+            <button
+              type="button"
+              key={preset.id}
+              onClick={() => setTheme(preset.id)}
+              aria-pressed={theme === preset.id}
+              className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-all ${
+                theme === preset.id
+                  ? 'border-cyan-500 bg-cyan-500/10'
+                  : 'border-slate-700 hover:border-slate-500'
+              }`}
+            >
+              <span className="flex -space-x-1" aria-hidden="true">
+                {preset.swatches.map((color) => (
+                  <span key={color} className="w-6 h-6 rounded-full border-2 border-slate-800" style={{ backgroundColor: color }} />
+                ))}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-slate-200">{preset.name}</span>
+                <span className="block text-[10px] text-slate-500">{preset.description}</span>
+              </span>
+              {theme === preset.id ? <Check className="w-4 h-4 text-cyan-400" /> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Proxy Section */}
       <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 space-y-5">
         <div className="flex items-center justify-between">

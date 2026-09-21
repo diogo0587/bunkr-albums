@@ -18,7 +18,8 @@ export default async function handler(req, res) {
 
   try {
     const range = req.headers.range
-    const upstreamReferer = req.headers['x-upstream-referer'] || 'https://get.bunkrr.su/'
+    const requestedReferer = Array.isArray(req.query.referer) ? req.query.referer[0] : req.query.referer
+    const upstreamReferer = requestedReferer || req.headers['x-upstream-referer'] || 'https://get.bunkrr.su/'
     const requestBody = req.method === 'POST'
       ? (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}))
       : undefined

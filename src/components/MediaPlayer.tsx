@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Play, Pause, Volume2, VolumeX, Maximize2, SkipBack, SkipForward, Loader2 } from 'lucide-react';
+import { APP_PROXY_URL } from '@/lib/app-proxy';
 
 interface MediaPlayerProps {
   url: string;
@@ -26,8 +27,9 @@ function formatTime(seconds: number): string {
 
 export function MediaPlayer({ url, filename, onClose }: MediaPlayerProps) {
   const fileType = getFileType(url);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [usingProxy, setUsingProxy] = useState(false);
+  const proxiedUrl = `${APP_PROXY_URL}${encodeURIComponent(url)}&referer=${encodeURIComponent('https://get.bunkrr.su/')}`;
+  const mediaUrl = usingProxy ? proxiedUrl : url;
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -40,6 +42,21 @@ export function MediaPlayer({ url, filename, onClose }: MediaPlayerProps) {
   const progressRef = useRef<HTMLDivElement>(null);
 
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement>(null);
+  const setMediaRef = useCallback((node: HTMLVideoElement | HTMLAudioElement | null) => {
+    mediaRef.current = node;
+  }, []);
+
+  const switchToProxy = useCallback(() => {
+    setError(false);
+    setLoading(true);
+    setUsingProxy(true);
+  }, [setError, setLoading, setUsingProxy]);
+
+  useEffect(() => {
+    if (!loading || error || usingProxy || fileType === 'image') return;
+    const timer = window.setTimeout(switchToProxy, 4500);
+    return () => window.clearTimeout(timer);
+  }, [loading, error, usingProxy, fileType, switchToProxy]);
 
   useEffect(() => {
     const el = mediaRef.current;
@@ -59,7 +76,10 @@ export function MediaPlayer({ url, filename, onClose }: MediaPlayerProps) {
     };
     const onWaiting = () => setLoading(true);
     const onCanPlay = () => setLoading(false);
-    const onError = () => { setError(true); setLoading(false); };
+    const onError = () => {
+      if (!usingProxy) switchToProxy();
+      else { setError(true); setLoading(false); }
+    };
     const onEnded = () => setPlaying(false);
 
     el.addEventListener('play', onPlay);
@@ -81,7 +101,7 @@ export function MediaPlayer({ url, filename, onClose }: MediaPlayerProps) {
       el.removeEventListener('error', onError);
       el.removeEventListener('ended', onEnded);
     };
-  }, [url]);
+  }, [mediaUrl, usingProxy, switchToProxy]);
 
   const togglePlay = useCallback(() => {
     const el = mediaRef.current;
@@ -191,14 +211,30 @@ export function MediaPlayer({ url, filename, onClose }: MediaPlayerProps) {
             {error && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
                 <p className="text-sm text-red-400">Erro ao carregar mídia</p>
-                <p className="text-xs text-slate-500">Tente copiar a URL e abrir no navegador</p>
+                <button
+                  type="button"
+                  onClick={switchToProxy}
+                  className="px-3 py-2 text-xs text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 rounded-lg transition-colors"
+                >
+                  Tentar novamente via proxy
+                </button>
               </div>
+            )}
+
+            {loading && !error && !usingProxy && fileType !== 'image' && (
+              <button
+                type="button"
+                onClick={switchToProxy}
+                className="absolute bottom-4 z-10 px-3 py-1.5 text-xs text-slate-300 bg-slate-800/90 hover:text-cyan-300 rounded-lg transition-colors"
+              >
+                Usar proxy agora
+              </button>
             )}
 
             {fileType === 'video' && (
               <video
-                ref={videoRef as React.RefObject<HTMLVideoElement>}
-                src={url}
+                ref={setMediaRef}
+                src={mediaUrl}
                 className="w-full h-full object-contain"
                 preload="metadata"
                 playsInline
@@ -208,7 +244,7 @@ export function MediaPlayer({ url, filename, onClose }: MediaPlayerProps) {
 
             {fileType === 'audio' && (
               <div className="w-full h-full flex flex-col items-center justify-center gap-6 bg-gradient-to-br from-purple-900/30 to-cyan-900/30">
-                <audio ref={audioRef as React.RefObject<HTMLAudioElement>} src={url} preload="metadata" />
+                <audio ref={setMediaRef} src={mediaUrl} preload="metadata" />
                 <div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
                   <Volume2 className="w-16 h-16 text-white" />
                 </div>
@@ -221,10 +257,14 @@ export function MediaPlayer({ url, filename, onClose }: MediaPlayerProps) {
 
             {fileType === 'image' && (
               <img
-                src={url}
+                src={mediaUrl}
                 alt={filename}
                 className="max-w-full max-h-full object-contain"
-                onError={() => setError(true)}
+                onLoad={() => setLoading(false)}
+                onError={() => {
+                  if (!usingProxy) switchToProxy();
+                  else setError(true);
+                }}
               />
             )}
           </div>

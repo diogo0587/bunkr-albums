@@ -37,6 +37,14 @@ function isFallbackImage(src: string): boolean {
   return FALLBACK_IMG_PATTERNS.some(p => src.includes(p));
 }
 
+function normalizeThumbnailUrl(src: string): string {
+  const candidate = src.trim().split(/\s+/)[0];
+  if (!candidate) return '';
+  if (candidate.startsWith('//')) return `https:${candidate}`;
+  if (candidate.startsWith('/')) return `${BASE_URL}${candidate}`;
+  return candidate.replace(/^http:/i, 'https:');
+}
+
 export function parseBalbumsHtml(html: string): BalbumsResult {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
@@ -103,9 +111,9 @@ export function parseBalbumsHtml(html: string): BalbumsResult {
     // 1. Try img with class thumb-img (the real thumbnail)
     const thumbImg = link.querySelector('img.thumb-img');
     if (thumbImg) {
-      const src = thumbImg.getAttribute('src') || thumbImg.getAttribute('data-src');
+      const src = thumbImg.getAttribute('data-src') || thumbImg.getAttribute('data-lazy-src') || thumbImg.getAttribute('src');
       if (src && !isFallbackImage(src)) {
-        thumbnail = src.startsWith('//') ? 'https:' + src : src;
+        thumbnail = normalizeThumbnailUrl(src);
       }
     }
 
@@ -113,9 +121,9 @@ export function parseBalbumsHtml(html: string): BalbumsResult {
     if (!thumbnail) {
       const imgs = link.querySelectorAll('img');
       for (const img of Array.from(imgs)) {
-        const src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-lazy-src');
+        const src = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('src') || img.getAttribute('srcset');
         if (src && !isFallbackImage(src) && !thumbnail) {
-          thumbnail = src.startsWith('//') ? 'https:' + src : src;
+          thumbnail = normalizeThumbnailUrl(src);
         }
       }
     }
@@ -128,9 +136,7 @@ export function parseBalbumsHtml(html: string): BalbumsResult {
         if (style.includes('background-image') || style.includes('url(')) {
           const bgMatch = style.match(/url\(["']?(.*?)["']?\)/);
           if (bgMatch && !isFallbackImage(bgMatch[1])) {
-            thumbnail = bgMatch[1];
-            if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-            else if (thumbnail.startsWith('/')) thumbnail = 'https://balbums.st' + thumbnail;
+            thumbnail = normalizeThumbnailUrl(bgMatch[1]);
             break;
           }
         }
@@ -180,7 +186,7 @@ export function buildSearchUrl(
 
   // For 'popular' sort, force the top-level category paths that return sorted results
   let effectiveCategory = category;
-  let effectiveSort = sort;
+  const effectiveSort = sort;
   if (sort === 'popular' && category === 'all') {
     effectiveCategory = 'albums';
   }

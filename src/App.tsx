@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Download, Layers, Clock, Globe, Settings } from 'lucide-react';
 import { Analytics } from '@vercel/analytics/react';
@@ -6,6 +6,7 @@ import { Header } from '@/components/Header';
 import { Toast } from '@/components/Toast';
 import { useAppStore } from '@/hooks/useAppStore';
 import type { TabValue } from '@/types';
+import { nextTheme } from '@/lib/themes';
 
 // Lazy-loaded tabs
 const SearchTab = lazy(() => import('@/sections/SearchTab').then(m => ({ default: m.SearchTab })));
@@ -32,41 +33,14 @@ function TabLoader() {
   );
 }
 
-function useTheme() {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('bunkr-theme');
-      if (saved === 'light' || saved === 'dark') return saved;
-      return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    }
-    return 'dark';
-  });
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    document.documentElement.classList.toggle('light', theme === 'light');
-    localStorage.setItem('bunkr-theme', theme);
-  }, [theme]);
-
-  // Listen for system theme changes
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: light)');
-    const handler = (e: MediaQueryListEvent) => {
-      const saved = localStorage.getItem('bunkr-theme');
-      if (!saved) {
-        setTheme(e.matches ? 'light' : 'dark');
-      }
-    };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
-  return { theme, setTheme };
-}
-
 export default function App() {
-  const { activeTab, setActiveTab, toast, hideToast } = useAppStore();
-  const { theme, setTheme } = useTheme();
+  const { activeTab, setActiveTab, toast, hideToast, theme, setTheme } = useAppStore();
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.classList.toggle('dark', theme !== 'light');
+    document.documentElement.classList.toggle('light', theme === 'light');
+  }, [theme]);
 
   // Keyboard shortcuts for tab navigation
   useEffect(() => {
@@ -109,8 +83,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-50 flex flex-col">
-      <Header theme={theme} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+    <div className="app-shell min-h-screen bg-slate-900 text-slate-50 flex flex-col">
+      <Header theme={theme} onToggleTheme={() => setTheme(nextTheme(theme))} />
 
       {/* Desktop top tabs */}
       <nav className="hidden sm:block bg-slate-800 border-b border-slate-600 sticky top-0 z-10">

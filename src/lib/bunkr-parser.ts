@@ -10,6 +10,14 @@ import { APP_PROXY_URL, APP_RESOLVE_URL } from './app-proxy';
 const DEAD_BUNKR_DOMAINS: Record<string, string> = {
   'bunkr.st': 'bunkr.cr',
   'bunkr.ru': 'bunkr.cr',
+  'bunkrr.ru': 'bunkr.cr',
+  'bunkr.su': 'bunkr.cr',
+  'bunkrr.su': 'bunkr.cr',
+  'bunkr.ax': 'bunkr.cr',
+  'bunkr.cat': 'bunkr.cr',
+  'bunkr.la': 'bunkr.cr',
+  'bunkr.is': 'bunkr.cr',
+  'bunkr.to': 'bunkr.cr',
   'bunkr.ch': 'bunkr.cr',
   'bunkr.cm': 'bunkr.cr',
 };
@@ -42,7 +50,9 @@ export function rewriteBunkrDomain(url: string): string {
       parsed.hostname = mapped;
       return parsed.toString();
     }
-  } catch {}
+  } catch {
+    return url;
+  }
   return url;
 }
 
@@ -183,7 +193,15 @@ export async function fetchWithProxy(
 export async function fetchAlbumHtml(url: string, proxyUrl?: string): Promise<string> {
   // Rewrite dead bunkr domains (bunkr.st -> bunkr.cr, etc.)
   const rewrittenUrl = rewriteBunkrDomain(url);
-  const response = await fetchWithProxy(rewrittenUrl, proxyUrl);
+  let fetchUrl = rewrittenUrl;
+  try {
+    const parsed = new URL(rewrittenUrl);
+    if (/\/a\/[a-zA-Z0-9_-]+/.test(parsed.pathname)) {
+      parsed.searchParams.set('advanced', '1');
+      fetchUrl = parsed.toString();
+    }
+  } catch { /* validation reports malformed URLs before this point */ }
+  const response = await fetchWithProxy(fetchUrl, proxyUrl);
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   const html = await response.text();
   // If the domain returned a parked page, try the canonical bunkr.cr
@@ -195,6 +213,75 @@ export async function fetchAlbumHtml(url: string, proxyUrl?: string): Promise<st
     }
   }
   return html;
+}
+
+interface AlbumManifestFile {
+  id?: string;
+  slug?: string;
+  original?: string;
+  name?: string;
+  extension?: string;
+  size?: number | string;
+}
+
+function decodeJsValue(raw: string | undefined): string {
+  if (!raw) return '';
+  const value = raw.trim();
+  if (value.startsWith('"')) {
+    try { return JSON.parse(value.replace(/\\'/g, "'")); } catch {
+      return value.slice(1, -1)
+        .replace(/\\"/g, '"')
+        .replace(/\\'/g, "'")
+        .replace(/\\\\/g, '\\');
+    }
+  }
+  if (value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1)
+      .replace(/\\'/g, "'")
+      .replace(/\\\\/g, '\\');
+  }
+  return value.replace(/,$/, '').trim();
+}
+
+function readManifestField(objectSource: string, field: string): string {
+  const fieldPattern = new RegExp(
+    `(?:^|[,\\n\\r])\\s*${field}\\s*:\\s*("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*'|[^,\\n\\r}]+)`,
+    'i'
+  );
+  return decodeJsValue(objectSource.match(fieldPattern)?.[1]);
+}
+
+function extractAlbumManifest(html: string): AlbumManifestFile[] {
+  const assignment = html.match(/window\.albumFiles\s*=\s*\[([\s\S]*?)\]\s*;/i)?.[1];
+  if (!assignment) return [];
+
+  const objects = assignment.match(/\{[\s\S]*?\n\s*\}/g) || assignment.match(/\{[^{}]*\}/g) || [];
+  return objects.map((source) => {
+    const rawSize = readManifestField(source, 'size');
+    const numericSize = Number(rawSize);
+    return {
+      id: readManifestField(source, 'id'),
+      slug: readManifestField(source, 'slug'),
+      original: readManifestField(source, 'original'),
+      name: readManifestField(source, 'name'),
+      extension: readManifestField(source, 'extension'),
+      size: rawSize && Number.isFinite(numericSize) ? numericSize : rawSize,
+    };
+  }).filter((file) => Boolean(file.slug || file.id));
+}
+
+function formatFileSize(value: number | string | undefined): string {
+  if (typeof value === 'string' && value.trim() && !/^\d+(?:\.\d+)?$/.test(value.trim())) {
+    return value.trim();
+  }
+  const bytes = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return '-';
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const amount = bytes / (1024 ** unitIndex);
+  const digits = unitIndex === 0 || amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
+  return `${amount.toFixed(digits)} ${units[unitIndex]}`;
 }
 
 export function extractItemPages(html: string, baseUrl: string): string[] {
@@ -286,7 +373,13 @@ function extractResolverInfo(html: string): { fileId: string; apiUrl: string } |
   return null;
 }
 
-async function getDownloadUrl(fileId: string, apiUrl: string, proxyUrl?: string): Promise<any> {
+interface DownloadMetadata {
+  mediafiles?: string;
+  path?: string;
+  original?: string;
+}
+
+async function getDownloadUrl(fileId: string, apiUrl: string, proxyUrl?: string): Promise<DownloadMetadata | null> {
   try {
     const response = await fetchWithProxy(apiUrl, proxyUrl, {
       method: 'POST',
@@ -298,7 +391,7 @@ async function getDownloadUrl(fileId: string, apiUrl: string, proxyUrl?: string)
       body: JSON.stringify({ id: fileId }),
     });
     if (!response.ok) return null;
-    return await response.json();
+    return await response.json() as DownloadMetadata;
   } catch {
     return null;
   }
@@ -353,6 +446,23 @@ export function parseAlbumHtml(html: string, baseUrl?: string): ParseResult {
     ogTitle?.getAttribute('content') ||
     titleTag?.textContent?.trim() ||
     'Álbum sem título';
+
+  const manifest = extractAlbumManifest(html);
+  if (manifest.length > 0) {
+    const files: BunkrFile[] = manifest.map((entry, index) => {
+      const slug = entry.slug || entry.id || `file-${index}`;
+      const name = sanitizeFilename(entry.original || entry.name || slug);
+      return {
+        id: `file-${index}-${slug}`,
+        name,
+        url: `${baseDomain}/f/${slug}`,
+        size: formatFileSize(entry.size),
+        type: (getFileExtension(name) || entry.extension || '').replace(/^\./, '').toLowerCase(),
+        isDirect: false,
+      };
+    });
+    return { files, albumName };
+  }
 
   const itemUrls = extractItemPages(html, baseUrl || baseDomain);
 
@@ -559,7 +669,7 @@ export async function resolveFileUrl(
 
     // The metadata API is authoritative and may point to a different CDN
     // node than the stale jsCDN value embedded in the HTML page.
-    let baseUrl = unsignedUrl || cdnUrl;
+    let baseUrl: string | undefined = unsignedUrl || cdnUrl || undefined;
     if (!baseUrl) baseUrl = findDirectMediaUrl(html) || undefined;
     if (!baseUrl) return null;
 

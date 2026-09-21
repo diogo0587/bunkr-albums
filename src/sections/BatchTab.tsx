@@ -53,7 +53,7 @@ export function BatchTab() {
           store.btUpdateResult(i, { url, status: 'error', fileCount: 0, error: 'Nenhum arquivo encontrado' });
         } else {
           // Resolve first file to get download URL
-          const firstResolved = await resolveFileUrl(result.files[0].url, proxy);
+          await resolveFileUrl(result.files[0].url, proxy);
           store.btUpdateResult(i, {
             url,
             status: 'success',
