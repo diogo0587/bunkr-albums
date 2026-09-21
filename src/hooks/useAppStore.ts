@@ -5,7 +5,7 @@ import type { HistoryEntry, ToastData, TabValue, BunkrFile, BatchResult } from '
 export type ProxyProvider = 'vercel' | 'corsproxy' | 'allorigins' | 'codetabs' | 'corsproxysh' | 'custom';
 
 export const PROXY_PROVIDERS: Record<ProxyProvider, { label: string; url: string }> = {
-  vercel: { label: 'Vercel Proxy (recomendado)', url: 'https://bunkr-albums.vercel.app/api/proxy?url=' },
+  vercel: { label: 'Vercel Proxy (recomendado)', url: '/api/proxy?url=' },
   corsproxy: { label: 'corsproxy.io', url: 'https://corsproxy.io/?url=' },
   allorigins: { label: 'allorigins.win', url: 'https://api.allorigins.win/raw?url=' },
   codetabs: { label: 'codetabs.com', url: 'https://api.codetabs.com/v1/proxy?quest=' },
@@ -128,7 +128,7 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       activeTab: 'search',
       proxyEnabled: true,
-      proxyProvider: 'corsproxy',
+      proxyProvider: 'vercel',
       proxyUrl: '',
       downloadDelay: 1500,
       history: [],
@@ -215,6 +215,14 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'bunkr-downloader-storage',
+      version: 2,
+      migrate: (persistedState, version) => {
+        const state = persistedState as Partial<AppState>;
+        if (version < 2) {
+          return { ...state, proxyProvider: 'vercel', proxyUrl: '' } as AppState;
+        }
+        return persistedState as AppState;
+      },
       partialize: (state) => ({
         proxyEnabled: state.proxyEnabled,
         proxyProvider: state.proxyProvider,
