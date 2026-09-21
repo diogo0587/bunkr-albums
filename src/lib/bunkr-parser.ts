@@ -2,7 +2,7 @@ import { shouldUseProxy } from './capacitor-native';
 
 import type { BunkrFile } from '@/types';
 import { isBunkrUrl, isCdnUrl, isDirectFileUrl } from './bunkr-hosts';
-import { APP_PROXY_URL } from './app-proxy';
+import { APP_PROXY_URL, APP_RESOLVE_URL } from './app-proxy';
 
 /**
  * Domains known to be dead/parked. Map them to the working bunkr.cr.
@@ -411,13 +411,58 @@ export async function resolveFilesConcurrently(
   let completed = 0;
   const total = files.length;
 
-  // Continuous worker pool: a slow request no longer blocks the next batch.
-  let nextIndex = 0;
-  const workerCount = Math.min(Math.max(1, concurrency), total);
+  // Resolve groups inside one Vercel invocation. This removes two browser ↔
+  // serverless round-trips per file and avoids dozens of cold starts.
+  const chunkSize = 25;
+  const chunks: Array<{ start: number; files: BunkrFile[] }> = [];
+  for (let start = 0; start < total; start += chunkSize) {
+    chunks.push({ start, files: files.slice(start, start + chunkSize) });
+  }
+
+  const pending = new Set(files.map((_, index) => index));
+  const batchOutcomes = await Promise.allSettled(
+    chunks.map(async (chunk) => {
+      const response = await fetchWithTimeout(APP_RESOLVE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ urls: chunk.files.map(file => file.url) }),
+      }, 30000);
+      if (!response.ok) throw new Error(`Batch HTTP ${response.status}`);
+      const payload = await response.json();
+      return { ...chunk, results: Array.isArray(payload.results) ? payload.results : [] };
+    })
+  );
+
+  for (const outcome of batchOutcomes) {
+    if (outcome.status !== 'fulfilled') continue;
+    const { start, files: chunkFiles, results } = outcome.value;
+    for (let offset = 0; offset < chunkFiles.length; offset++) {
+      const index = start + offset;
+      const result = results[offset];
+      if (!result?.url) continue;
+      const filename = result.filename || files[index].name;
+      resolved[index] = {
+        ...files[index],
+        name: filename,
+        url: result.url,
+        type: getFileExtension(filename),
+        isDirect: true,
+      };
+      pending.delete(index);
+      completed++;
+      onProgress?.(completed, total, filename);
+    }
+  }
+
+  // Individual fallback only for items the batch endpoint could not resolve.
+  const pendingIndexes = Array.from(pending);
+  let nextPending = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), pendingIndexes.length);
   const workers = Array.from({ length: workerCount }, async () => {
     while (true) {
-      const index = nextIndex++;
-      if (index >= total) return;
+      const position = nextPending++;
+      if (position >= pendingIndexes.length) return;
+      const index = pendingIndexes[position];
 
       const file = files[index];
       try {
