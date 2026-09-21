@@ -154,7 +154,9 @@ export async function fetchWithProxy(
   try {
     const fetchUrl = getCorsProxyUrl(url, effectiveProxy);
     const resp = await fetchWithTimeout(fetchUrl, { ...options, headers });
-    if (resp.ok || resp.status === 403) return resp;
+    // Any HTTP response proves the proxy request completed. Retrying the same
+    // deterministic 4xx/5xx through several public proxies adds up to ~50s.
+    return resp;
   } catch { /* fall through to fallbacks */ }
 
   // Fallback: try each DEFAULT_CORS_PROXIES
@@ -163,7 +165,7 @@ export async function fetchWithProxy(
     try {
       const fetchUrl = getCorsProxyUrl(url, fallbackProxy);
       const resp = await fetchWithTimeout(fetchUrl, { ...options, headers });
-      if (resp.ok || resp.status === 403) return resp;
+      return resp;
     } catch { /* try next */ }
   }
 
@@ -254,19 +256,38 @@ export function extractPageVars(html: string): Record<string, string> {
   return vars;
 }
 
-function extractFileId(html: string): string | null {
-  const match = html.match(/data-id="([a-zA-Z0-9_-]+)"/);
-  if (match) return match[1];
-  const match2 = html.match(/\/f\/([a-zA-Z0-9_-]+)/);
-  if (match2) return match2[1];
-  const match3 = html.match(/\/v\/([a-zA-Z0-9_-]+)/);
-  if (match3) return match3[1];
+function extractResolverInfo(html: string): { fileId: string; apiUrl: string } | null {
+  // Current Bunkr pages expose the numeric id and the correct resolver host in
+  // the primary download link: https://dl.bunkr.<tld>/file/<numeric-id>.
+  const linkMatch = html.match(/https?:\/\/(dl\.bunkr\.[a-z0-9.-]+)\/file\/(\d+)/i);
+  if (linkMatch) {
+    return {
+      fileId: linkMatch[2],
+      apiUrl: `https://${linkMatch[1]}/api/_001_v2`,
+    };
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const downloadLink = doc.querySelector<HTMLAnchorElement>('a[href*="/file/"]');
+  if (downloadLink?.href) {
+    try {
+      const parsed = new URL(downloadLink.href);
+      const id = parsed.pathname.match(/\/file\/(\d+)/)?.[1];
+      if (id && parsed.hostname.startsWith('dl.bunkr.')) {
+        return { fileId: id, apiUrl: `${parsed.origin}/api/_001_v2` };
+      }
+    } catch { /* keep trying fallbacks */ }
+  }
+
+  const numericId = html.match(/data-(?:file-)?id=["'](\d+)["']/i)?.[1];
+  if (numericId) return { fileId: numericId, apiUrl: DOWNLOAD_API };
   return null;
 }
 
-async function getDownloadUrl(fileId: string, proxyUrl?: string): Promise<any> {
+async function getDownloadUrl(fileId: string, apiUrl: string, proxyUrl?: string): Promise<any> {
   try {
-    const response = await fetchWithProxy(DOWNLOAD_API, proxyUrl, {
+    const response = await fetchWithProxy(apiUrl, proxyUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -389,31 +410,34 @@ export async function resolveFilesConcurrently(
   let completed = 0;
   const total = files.length;
 
-  // Process in batches of `concurrency` - NO delays for maximum speed
-  for (let i = 0; i < total; i += concurrency) {
-    const batch = files.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(
-      batch.map(async (file, batchIdx) => {
-        const result = await resolveFileUrlCached(file.url, proxyUrl);
-        return { index: i + batchIdx, result };
-      })
-    );
+  // Continuous worker pool: a slow request no longer blocks the next batch.
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), total);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= total) return;
 
-    for (const outcome of batchResults) {
-      completed++;
-      if (outcome.status === 'fulfilled' && outcome.value.result) {
-        const { index, result } = outcome.value;
-        resolved[index] = {
-          ...files[index],
-          name: result.filename,
-          url: result.url,
-          type: getFileExtension(result.filename),
-          isDirect: true,
-        };
+      const file = files[index];
+      try {
+        const result = await resolveFileUrlCached(file.url, proxyUrl);
+        if (result) {
+          resolved[index] = {
+            ...file,
+            name: result.filename,
+            url: result.url,
+            type: getFileExtension(result.filename),
+            isDirect: true,
+          };
+        }
+      } finally {
+        completed++;
+        onProgress?.(completed, total, resolved[index]?.name || file.name);
       }
-      onProgress?.(completed, total, resolved[completed - 1]?.name || '');
     }
-  }
+  });
+
+  await Promise.all(workers);
 
   return resolved;
 }
@@ -472,17 +496,18 @@ export async function resolveFileUrl(
     // Rewrite dead bunkr domains
     const rewrittenUrl = rewriteBunkrDomain(filePageUrl);
     const html = await fetchAlbumHtml(rewrittenUrl, proxyUrl);
-    const filename = extractFilenameFromPage(html) || 'unknown';
+    let filename = extractFilenameFromPage(html) || 'unknown';
     const pageVars = extractPageVars(html);
     const cdnUrl = pageVars.jsCDN;
-    const fileId = extractFileId(html);
+    const resolver = extractResolverInfo(html);
 
     let unsignedUrl: string | undefined;
-    if (fileId) {
-      const downloadResponse = await getDownloadUrl(fileId, proxyUrl);
+    if (resolver) {
+      const downloadResponse = await getDownloadUrl(resolver.fileId, resolver.apiUrl, proxyUrl);
       if (downloadResponse?.mediafiles && downloadResponse?.path) {
         const parsed = new URL(downloadResponse.mediafiles);
         unsignedUrl = `${parsed.origin}${downloadResponse.path}`;
+        if (downloadResponse.original) filename = sanitizeFilename(downloadResponse.original);
       }
     }
 
