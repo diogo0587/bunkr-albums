@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', '*')
     return res.status(204).end()
   }
@@ -12,13 +12,26 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing url parameter' })
   }
 
+  if (!['GET', 'HEAD', 'POST'].includes(req.method)) {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
+
   try {
     const range = req.headers.range
+    const upstreamReferer = req.headers['x-upstream-referer'] || 'https://get.bunkrr.su/'
+    const requestBody = req.method === 'POST'
+      ? (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}))
+      : undefined
+
     const response = await fetch(target, {
+      method: req.method,
+      body: requestBody,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': '*/*',
-        'Referer': 'https://get.bunkrr.su/',
+        'Content-Type': req.headers['content-type'] || 'application/json',
+        'Referer': String(upstreamReferer),
+        'Origin': new URL(String(upstreamReferer)).origin,
         ...(range ? { Range: range } : {}),
       }
     })
@@ -26,7 +39,7 @@ export default async function handler(req, res) {
     const contentType = response.headers.get('content-type') || 'application/octet-stream'
 
     res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', '*')
     res.setHeader('Content-Type', contentType)
 
